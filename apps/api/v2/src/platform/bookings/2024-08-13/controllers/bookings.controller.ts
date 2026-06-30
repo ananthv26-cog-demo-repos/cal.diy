@@ -64,6 +64,7 @@ import {
   OPTIONAL_X_CAL_CLIENT_ID_HEADER,
   OPTIONAL_X_CAL_SECRET_KEY_HEADER,
 } from "@/lib/docs/headers";
+import { Throttle } from "@/lib/endpoint-throttler-decorator";
 import {
   AuthOptionalUser,
   GetOptionalUser,
@@ -107,10 +108,20 @@ export class BookingsController_2024_08_13 {
   @ApiHeader(OPTIONAL_X_CAL_CLIENT_ID_HEADER)
   @ApiHeader(OPTIONAL_X_CAL_SECRET_KEY_HEADER)
   @ApiHeader(OPTIONAL_API_KEY_OR_ACCESS_TOKEN_HEADER)
+  @Throttle({
+    limit: 10,
+    ttl: 60000,
+    blockDuration: 60000,
+    name: "booking_create",
+  })
   @ApiOperation({
     summary: "Create a booking",
     description: `
       POST /v2/bookings is used to create regular bookings, recurring bookings and instant bookings. The request bodies for all 3 are almost the same except:
+
+      **Rate Limiting:**
+      This endpoint is rate limited to 10 requests per minute to prevent abuse.
+
       If eventTypeId in the request body is id of a regular event, then regular booking is created.
 
       If it is an id of a recurring event type, then recurring booking is created.
