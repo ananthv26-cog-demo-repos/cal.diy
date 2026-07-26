@@ -1,0 +1,26 @@
+name: PR Convention Guard
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  convention-guard:
+    name: Check AGENTS.md conventions
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get changed TypeScript files
+        id: changed
+        run: |
+          changed=$(git diff --name-only origin/main...HEAD | grep -E '^packages/.*\.(ts|tsx)$' || true)
+          echo "files=${changed}" >> $GITHUB_OUTPUT
+
+      - name: Run convention guard
+        if: steps.changed.outputs.files != ''
+        run: node scripts/pr-convention-guard.js ${{ steps.changed.outputs.files }}
