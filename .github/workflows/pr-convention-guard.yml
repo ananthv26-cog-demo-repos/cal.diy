@@ -18,7 +18,7 @@ jobs:
       - name: Get changed TypeScript files
         id: changed
         run: |
-          changed=$(git diff --name-only origin/main...HEAD | grep -E '^packages/.*\.(ts|tsx)$' || true)
+          changed=$(git diff --name-only origin/main...HEAD | grep -E '^packages/.*\.(ts|tsx)$' | tr '\n' ' ' || true)
           echo "files=${changed}" >> $GITHUB_OUTPUT
 
       - name: Run convention guard
