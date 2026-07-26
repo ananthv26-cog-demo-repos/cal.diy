@@ -25,7 +25,9 @@ export const previewReminder = async ({
   userId: number;
   userEmail: string;
 }): Promise<ReminderPreview> => {
-  if (!isReminderTemplateValid(templateName)) {
+  const isValid: boolean = isReminderTemplateValid(templateName);
+
+  if (!isValid) {
     throw new ErrorWithCode(ErrorCode.BadRequest, `Template "${templateName}" is not supported`);
   }
 
