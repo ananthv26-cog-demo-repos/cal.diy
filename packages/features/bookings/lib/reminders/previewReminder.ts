@@ -25,7 +25,7 @@ export const previewReminder = async ({
   userId: number;
   userEmail: string;
 }): Promise<ReminderPreview> => {
-  const isValid: boolean = isReminderTemplateValid(templateName);
+  const isValid = await isReminderTemplateValid(templateName);
 
   if (!isValid) {
     throw new ErrorWithCode(ErrorCode.BadRequest, `Template "${templateName}" is not supported`);
@@ -33,10 +33,16 @@ export const previewReminder = async ({
 
   const booking = await prisma.booking.findUnique({
     where: { uid: bookingUid },
-    include: {
-      user: true,
-      attendees: true,
-      eventType: true,
+    select: {
+      userId: true,
+      title: true,
+      startTime: true,
+      userPrimaryEmail: true,
+      attendees: {
+        select: {
+          email: true,
+        },
+      },
     },
   });
 
@@ -51,27 +57,12 @@ export const previewReminder = async ({
     throw new ErrorWithCode(ErrorCode.Forbidden, "You don't have access to this booking");
   }
 
-  const credential = await prisma.credential.findFirst({
-    where: {
-      userId: booking.userId ?? undefined,
-      type: "google_calendar",
-    },
-    select: {
-      id: true,
-      type: true,
-      key: true,
-    },
-  });
-
   const startTime = new Date(booking.startTime).toLocaleString();
   const sendTo = booking.attendees[0]?.email ?? booking.userPrimaryEmail ?? "no-reply@example.com";
 
-  const preview = {
+  return {
     subject: `Reminder: ${booking.title}`,
     body: `Your booking is scheduled for ${startTime}.`,
     sendTo,
-    credential,
   };
-
-  return preview as any;
 };
