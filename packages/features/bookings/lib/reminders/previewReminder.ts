@@ -41,6 +41,12 @@ export const previewReminder = async ({
       attendees: {
         select: {
           email: true,
+          timeZone: true,
+        },
+      },
+      user: {
+        select: {
+          timeZone: true,
         },
       },
     },
@@ -57,8 +63,11 @@ export const previewReminder = async ({
     throw new ErrorWithCode(ErrorCode.Forbidden, "You don't have access to this booking");
   }
 
-  const startTime = new Date(booking.startTime).toLocaleString();
-  const sendTo = booking.attendees[0]?.email ?? booking.userPrimaryEmail ?? "no-reply@example.com";
+  const primaryAttendee = booking.attendees[0];
+  const sendTo = primaryAttendee?.email ?? booking.userPrimaryEmail ?? "no-reply@example.com";
+  const timeZone = primaryAttendee?.timeZone ?? booking.user?.timeZone ?? "UTC";
+
+  const startTime = new Date(booking.startTime).toLocaleString(undefined, { timeZone });
 
   return {
     subject: `Reminder: ${booking.title}`,
