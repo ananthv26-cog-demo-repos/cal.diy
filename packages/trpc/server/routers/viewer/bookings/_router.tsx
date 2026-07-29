@@ -11,6 +11,7 @@ import { ZGetInputSchema } from "./get.schema";
 import { ZGetBookingAttendeesInputSchema } from "./getBookingAttendees.schema";
 import { ZGetBookingDetailsInputSchema } from "./getBookingDetails.schema";
 import { ZGetBookingHistoryInputSchema } from "./getBookingHistory.schema";
+import { ZGetRescheduleEligibilityInputSchema } from "./getRescheduleEligibility.schema";
 import { ZGetWrongAssignmentReportsInputSchema } from "./getWrongAssignmentReports.schema";
 import { ZHasWrongAssignmentReportInputSchema } from "./hasWrongAssignmentReport.schema";
 import { ZReportBookingInputSchema } from "./reportBooking.schema";
@@ -87,6 +88,17 @@ export const bookingsRouter = router({
       input,
     });
   }),
+
+  getRescheduleEligibility: authedProcedure
+    .input(ZGetRescheduleEligibilityInputSchema)
+    .query(async ({ input, ctx }) => {
+      const { getRescheduleEligibilityHandler } = await import("./getRescheduleEligibility.handler");
+
+      return getRescheduleEligibilityHandler({
+        ctx,
+        input,
+      });
+    }),
 
   find: publicProcedure.input(ZFindInputSchema).query(async ({ input, ctx }) => {
     const { getHandler } = await import("./find.handler");
