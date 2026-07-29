@@ -641,6 +641,24 @@ export class BookingRepository implements IBookingRepository {
     });
   }
 
+  async findByUidForRescheduleEligibility({ bookingUid }: { bookingUid: string }) {
+    return await this.prismaClient.booking.findUnique({
+      where: {
+        uid: bookingUid,
+      },
+      select: {
+        userId: true,
+        status: true,
+        startTime: true,
+        eventType: {
+          select: {
+            minimumBookingNotice: true,
+          },
+        },
+      },
+    });
+  }
+
   async findRescheduledToBooking({ bookingUid }: { bookingUid: string }) {
     return await this.prismaClient.booking.findFirst({
       where: {
