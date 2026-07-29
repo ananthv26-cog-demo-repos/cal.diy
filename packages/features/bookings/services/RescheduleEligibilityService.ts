@@ -1,4 +1,3 @@
-import dayjs from "@calcom/dayjs";
 import { ErrorWithCode } from "@calcom/lib/errors";
 import type { PrismaClient } from "@calcom/prisma";
 import { BookingStatus } from "@calcom/prisma/enums";
@@ -27,12 +26,6 @@ export class RescheduleEligibilityService {
     userId: number;
     bookingUid: string;
   }): Promise<RescheduleEligibility> {
-    const booking = await this.bookingRepo.findByUidForRescheduleEligibility({ bookingUid });
-
-    if (!booking) {
-      throw ErrorWithCode.Factory.BookingNotFound("Booking not found");
-    }
-
     const hasAccess = await this.bookingAccessService.doesUserIdHaveAccessToBooking({
       userId,
       bookingUid,
@@ -42,12 +35,18 @@ export class RescheduleEligibilityService {
       throw ErrorWithCode.Factory.Forbidden("You do not have permission to view this booking");
     }
 
+    const booking = await this.bookingRepo.findByUidForRescheduleEligibility({ bookingUid });
+
+    if (!booking) {
+      throw ErrorWithCode.Factory.BookingNotFound("Booking not found");
+    }
+
     const minimumBookingNotice = booking.eventType?.minimumBookingNotice ?? 0;
 
     const isActive = booking.status === BookingStatus.ACCEPTED || booking.status === BookingStatus.PENDING;
 
-    const earliestReschedule = dayjs().add(minimumBookingNotice, "minutes");
-    const canReschedule = isActive && dayjs(booking.startTime).isAfter(earliestReschedule);
+    const earliestReschedule = new Date(Date.now() + minimumBookingNotice * 60 * 1000);
+    const canReschedule = isActive && booking.startTime.getTime() > earliestReschedule.getTime();
 
     return {
       canReschedule,
