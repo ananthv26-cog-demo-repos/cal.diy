@@ -5,9 +5,15 @@ import { BookingRepository } from "../repositories/BookingRepository";
 
 class PermissionCheckService {
   constructor(_prisma?: unknown) {}
-  async checkPermission(..._args: unknown[]) { return true; }
-  async hasPermission(..._args: unknown[]) { return true; }
-  async getTeamIdsWithPermission(..._args: unknown[]): Promise<number[]> { return []; }
+  async checkPermission(..._args: unknown[]) {
+    return true;
+  }
+  async hasPermission(..._args: unknown[]) {
+    return true;
+  }
+  async getTeamIdsWithPermission(..._args: unknown[]): Promise<number[]> {
+    return [];
+  }
 }
 
 type BookingForAccessCheck = NonNullable<Awaited<ReturnType<BookingRepository["findByUidIncludeEventType"]>>>;
@@ -20,29 +26,13 @@ export class BookingAccessService {
   }
 
   private isUserAHost(userId: number, booking: BookingForAccessCheck): boolean {
-    const hostMap = new Map<number, { id: number; email: string }>();
+    if (booking.user?.id === userId) return true;
 
-    const addHost = (id: number, email: string) => {
-      if (!hostMap.has(id)) {
-        hostMap.set(id, { id, email });
-      }
-    };
-
-    booking?.eventType?.hosts?.forEach((host: { userId: number; user: { email: string } }) =>
-      addHost(host.userId, host.user.email)
-    );
-    booking?.eventType?.users?.forEach((user: { id: number; email: string }) => addHost(user.id, user.email));
-
-    if (booking?.user?.id && booking?.user?.email) {
-      addHost(booking.user.id, booking.user.email);
+    if (booking.eventType?.hosts?.some((host: { userId: number }) => host.userId === userId)) {
+      return true;
     }
 
-    const attendeeEmails = new Set(booking.attendees?.map((attendee: { email: string }) => attendee.email));
-    const filteredHosts = Array.from(hostMap.values()).filter(
-      (host) => attendeeEmails.has(host.email) || host.id === booking.user?.id
-    );
-
-    return filteredHosts.some((host) => host.id === userId);
+    return booking.eventType?.users?.some((user: { id: number }) => user.id === userId) ?? false;
   }
 
   /**
