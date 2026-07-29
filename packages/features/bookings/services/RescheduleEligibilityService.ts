@@ -46,8 +46,8 @@ export class RescheduleEligibilityService {
 
     const isActive = booking.status === BookingStatus.ACCEPTED || booking.status === BookingStatus.PENDING;
 
-    const earliestReschedule = dayjs().add(minimumBookingNotice, "seconds");
-    const canReschedule = isActive && dayjs(booking.startTime).isAfter(earliestReschedule);
+    const rescheduleCutoff = dayjs().add(minimumBookingNotice, "seconds");
+    const canReschedule = isActive && dayjs(booking.startTime).isAfter(rescheduleCutoff);
 
     return {
       canReschedule,
