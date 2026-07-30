@@ -53,11 +53,11 @@ describe("http", () => {
     expect(http.instance.defaults.headers.common[CAL_API_VERSION_HEADER]).toBe("2024-06-14");
   });
 
-  it("should read the client id header instead of the version header in getVersionHeader (known bug)", () => {
+  it("should read the api version header in getVersionHeader independent of the client id header", () => {
     http.setVersionHeader("2024-06-14");
     http.setClientIdHeader("client-abc");
 
-    expect(http.getVersionHeader()).toBe("client-abc");
+    expect(http.getVersionHeader()).toBe("2024-06-14");
   });
 
   it("should store the base url and the refresh url", () => {
