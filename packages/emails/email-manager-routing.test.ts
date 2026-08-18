@@ -104,8 +104,9 @@ describe("sendReassignedScheduledEmailsAndSMS", () => {
     await sendReassignedScheduledEmailsAndSMS({ calEvent: buildEvent(), members });
 
     expect(h.emailCtorArgs.OrganizerScheduledEmail).toHaveLength(2);
-    expect(h.smsAttendeeArgs.EventSuccessfullyScheduledSMS ?? []).toHaveLength(1);
-    expect(h.smsAttendeeArgs.EventSuccessfullyScheduledSMS[0][0]).toBe(members[1]);
+    const smsCalls = h.smsAttendeeArgs.EventSuccessfullyScheduledSMS ?? [];
+    expect(smsCalls).toHaveLength(1);
+    expect(smsCalls[0]?.[0]).toBe(members[1]);
   });
 
   it("returns early and sends nothing when host emails are disabled", async () => {

@@ -7,7 +7,8 @@ vi.mock("@calcom/prisma", () => ({ prisma: {} }));
 
 vi.mock("../lib/generateIcsFile", () => ({
   default: vi.fn(() => ({ filename: "event.ics", content: "ICS", method: "REQUEST" })),
-  GenerateIcsRole: { ATTENDEE: "ATTENDEE", ORGANIZER: "ORGANIZER" },
+  // Values must mirror the real enum so role assertions catch a wrong constant.
+  GenerateIcsRole: { ATTENDEE: "attendee", ORGANIZER: "organizer" },
 }));
 
 vi.mock("../src/renderEmail", () => ({
@@ -77,7 +78,7 @@ describe("OrganizerScheduledEmail", () => {
     expect(payload.icalEvent).toMatchObject({ method: "REQUEST" });
     expect(payload.html).toBe("<html>mock</html>");
     expect(generateIcsFile).toHaveBeenCalledWith(
-      expect.objectContaining({ role: "ORGANIZER", status: "CONFIRMED" })
+      expect.objectContaining({ role: "organizer", status: "CONFIRMED" })
     );
   });
 

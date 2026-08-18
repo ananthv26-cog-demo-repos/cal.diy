@@ -14,7 +14,8 @@ describe("sanitizeDisplayName", () => {
 
   it("replaces disallowed characters in the name with a single space", () => {
     expect(sanitizeDisplayName("Doe, John <john@example.com>")).toBe("Doe John <john@example.com>");
-    // Leading/trailing whitespace introduced by replacement is collapsed but not trimmed.
+    // `sanitize` collapses runs of whitespace but never trims, so replacement can leave a
+    // leading/doubled space. Pinned as current behavior, not as a desired guarantee.
     expect(sanitizeDisplayName('"Quoted" Name <a@b.com>')).toBe(" Quoted Name <a@b.com>");
     expect(sanitizeDisplayName("A;B:C(D) <a@b.com>")).toBe("A B C D  <a@b.com>");
   });
