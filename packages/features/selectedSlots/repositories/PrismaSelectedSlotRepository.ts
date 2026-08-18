@@ -21,10 +21,18 @@ export class PrismaSelectedSlotRepository implements ISelectedSlotRepository {
       select: {
         seatsPerTimeSlot: true,
         users: { select: { id: true } },
+        hosts: { select: { userId: true } },
       },
     });
 
     if (!eventType || eventType.seatsPerTimeSlot) {
+      return false;
+    }
+
+    const userIds = Array.from(
+      new Set([...eventType.users.map((user) => user.id), ...eventType.hosts.map((host) => host.userId)])
+    );
+    if (userIds.length === 0) {
       return false;
     }
 
@@ -35,11 +43,11 @@ export class PrismaSelectedSlotRepository implements ISelectedSlotRepository {
 
     try {
       await this.prismaClient.$transaction(
-        eventType.users.map((user) =>
+        userIds.map((userId) =>
           this.prismaClient.selectedSlots.upsert({
             where: {
               selectedSlotUnique: {
-                userId: user.id,
+                userId,
                 slotUtcStartDate: slot.utcStartIso,
                 slotUtcEndDate: slot.utcEndIso,
                 uid,
@@ -50,7 +58,7 @@ export class PrismaSelectedSlotRepository implements ISelectedSlotRepository {
               eventTypeId,
             },
             create: {
-              userId: user.id,
+              userId,
               eventTypeId,
               slotUtcStartDate: slot.utcStartIso,
               slotUtcEndDate: slot.utcEndIso,

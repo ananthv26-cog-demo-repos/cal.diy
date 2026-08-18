@@ -959,8 +959,10 @@ model WaitlistEntry {
   createdAt        DateTime            @default(now())
   updatedAt        DateTime            @updatedAt
 
+  // @@partial_index([eventTypeId, startTime], where: "status = 'OFFERED'")
   @@unique([eventTypeId, startTime, attendeeEmail])
   @@index([eventTypeId, startTime, status, createdAt])
+  @@index([status, startTime])
 }
 
 model Tracking {
