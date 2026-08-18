@@ -37,9 +37,17 @@ export interface WaitlistEntryStatusUpdate {
 export interface IWaitlistEntryRepository {
   create(data: WaitlistEntryCreateData): Promise<WaitlistEntryRecord>;
 
+  findById(id: number): Promise<WaitlistEntryRecord | null>;
+
   findByUid(uid: string): Promise<WaitlistEntryRecord | null>;
 
   findByOfferToken(offerToken: string): Promise<WaitlistEntryRecord | null>;
+
+  findBySlotAndEmail(params: {
+    eventTypeId: number;
+    startTime: Date;
+    attendeeEmail: string;
+  }): Promise<WaitlistEntryRecord | null>;
 
   findNextPendingForSlot(params: {
     eventTypeId: number;

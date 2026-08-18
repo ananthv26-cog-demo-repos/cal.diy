@@ -6,6 +6,13 @@ export type TimeSlot = {
 };
 
 export interface ISelectedSlotRepository {
+  reserveForWaitlist(args: {
+    eventTypeId: number;
+    slot: TimeSlot;
+    uid: string;
+    releaseAt: Date;
+  }): Promise<boolean>;
+  releaseForWaitlist(args: { eventTypeId: number; slot: TimeSlot; uid: string }): Promise<void>;
   findReservedByOthers(args: {
     slot: TimeSlot;
     eventTypeId: number;

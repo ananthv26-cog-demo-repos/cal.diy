@@ -60,6 +60,13 @@ export class WaitlistEntryRepository implements IWaitlistEntryRepository {
     });
   }
 
+  async findById(id: number): Promise<WaitlistEntryRecord | null> {
+    return this.prismaClient.waitlistEntry.findUnique({
+      where: { id },
+      select: waitlistEntrySelect,
+    });
+  }
+
   async findByUid(uid: string): Promise<WaitlistEntryRecord | null> {
     return this.prismaClient.waitlistEntry.findUnique({
       where: { uid },
@@ -70,6 +77,27 @@ export class WaitlistEntryRepository implements IWaitlistEntryRepository {
   async findByOfferToken(offerToken: string): Promise<WaitlistEntryRecord | null> {
     return this.prismaClient.waitlistEntry.findUnique({
       where: { offerToken },
+      select: waitlistEntrySelect,
+    });
+  }
+
+  async findBySlotAndEmail({
+    eventTypeId,
+    startTime,
+    attendeeEmail,
+  }: {
+    eventTypeId: number;
+    startTime: Date;
+    attendeeEmail: string;
+  }): Promise<WaitlistEntryRecord | null> {
+    return this.prismaClient.waitlistEntry.findUnique({
+      where: {
+        eventTypeId_startTime_attendeeEmail: {
+          eventTypeId,
+          startTime,
+          attendeeEmail,
+        },
+      },
       select: waitlistEntrySelect,
     });
   }
