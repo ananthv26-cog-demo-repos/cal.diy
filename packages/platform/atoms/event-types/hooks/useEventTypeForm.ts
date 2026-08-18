@@ -53,6 +53,8 @@ export const useEventTypeForm = ({
       seatsPerTimeSlot: eventType.seatsPerTimeSlot,
       seatsShowAttendees: eventType.seatsShowAttendees,
       seatsShowAvailabilityCount: eventType.seatsShowAvailabilityCount,
+      waitlistEnabled: eventType.waitlistEnabled ?? false,
+      waitlistMaxSize: eventType.waitlistMaxSize ?? null,
       lockTimeZoneToggleOnBookingPage: eventType.lockTimeZoneToggleOnBookingPage,
       lockedTimeZone: eventType.lockedTimeZone || null,
       locations: eventType.locations || [],

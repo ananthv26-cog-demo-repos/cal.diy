@@ -139,6 +139,8 @@ export type FormValues = {
   seatsShowAttendees: boolean | null;
   seatsShowAvailabilityCount: boolean | null;
   seatsPerTimeSlotEnabled: boolean;
+  waitlistEnabled: boolean;
+  waitlistMaxSize: number | null;
   autoTranslateDescriptionEnabled: boolean;
   autoTranslateInstantMeetingTitleEnabled: boolean;
   fieldTranslations: EventTypeTranslation[];
@@ -371,6 +373,8 @@ export type EventTypeUpdateInput = {
   minimumRescheduleNotice?: number | null;
   seatsShowAttendees?: boolean | null;
   seatsShowAvailabilityCount?: boolean | null;
+  waitlistEnabled?: boolean;
+  waitlistMaxSize?: number | null;
   scheduleId?: number | null;
   allowReschedulingCancelledBookings?: boolean | null;
   price?: number;

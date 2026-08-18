@@ -761,6 +761,8 @@ export class EventTypeRepository implements IEventTypesRepository {
       seatsPerTimeSlot: true,
       seatsShowAttendees: true,
       seatsShowAvailabilityCount: true,
+      waitlistEnabled: true,
+      waitlistMaxSize: true,
       webhooks: {
         select: {
           id: true,
@@ -1041,6 +1043,8 @@ export class EventTypeRepository implements IEventTypesRepository {
       seatsPerTimeSlot: true,
       seatsShowAttendees: true,
       seatsShowAvailabilityCount: true,
+      waitlistEnabled: true,
+      waitlistMaxSize: true,
       webhooks: {
         select: {
           id: true,
