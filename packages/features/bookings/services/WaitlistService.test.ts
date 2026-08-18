@@ -134,6 +134,68 @@ describe("WaitlistService", () => {
     expect(waitlistEntryRepository.create).not.toHaveBeenCalled();
   });
 
+  it("reactivates a cancelled entry after running join validations", async () => {
+    const { service, waitlistEntryRepository, availableSlotsService } = setup();
+    const cancelled = entry({ status: "CANCELLED" });
+    waitlistEntryRepository.findBySlotAndEmail.mockResolvedValue(cancelled);
+    waitlistEntryRepository.transitionStatus.mockResolvedValue({ count: 1 });
+    availableSlotsService.getAvailableSlots.mockResolvedValue({ slots: {} });
+
+    await expect(
+      service.join({
+        eventTypeId: 10,
+        startTime: slotStart,
+        endTime: slotEnd,
+        attendee: { name: "A", email: cancelled.attendeeEmail, timeZone: "UTC" },
+      })
+    ).resolves.toMatchObject({ id: cancelled.id, status: "PENDING", offerExpiresAt: null });
+    expect(waitlistEntryRepository.transitionStatus).toHaveBeenCalledWith({
+      id: cancelled.id,
+      expectedStatus: "CANCELLED",
+      data: {
+        status: "PENDING",
+        offerToken: null,
+        offeredAt: null,
+        offerExpiresAt: null,
+        claimedBookingId: null,
+      },
+    });
+  });
+
+  it("reactivates an expired entry after running join validations", async () => {
+    const { service, waitlistEntryRepository, availableSlotsService } = setup();
+    const expired = entry({ status: "EXPIRED" });
+    waitlistEntryRepository.findBySlotAndEmail.mockResolvedValue(expired);
+    waitlistEntryRepository.transitionStatus.mockResolvedValue({ count: 1 });
+    availableSlotsService.getAvailableSlots.mockResolvedValue({ slots: {} });
+
+    await expect(
+      service.join({
+        eventTypeId: 10,
+        startTime: slotStart,
+        endTime: slotEnd,
+        attendee: { name: "A", email: expired.attendeeEmail, timeZone: "UTC" },
+      })
+    ).resolves.toMatchObject({ id: expired.id, status: "PENDING", offerExpiresAt: null });
+    expect(waitlistEntryRepository.transitionStatus).toHaveBeenCalledWith(
+      expect.objectContaining({ expectedStatus: "EXPIRED" })
+    );
+  });
+
+  it("rejects rejoining a claimed entry", async () => {
+    const { service, waitlistEntryRepository } = setup();
+    waitlistEntryRepository.findBySlotAndEmail.mockResolvedValue(entry({ status: "CLAIMED" }));
+
+    await expect(
+      service.join({
+        eventTypeId: 10,
+        startTime: slotStart,
+        endTime: slotEnd,
+        attendee: { name: "A", email: "attendee@example.com", timeZone: "UTC" },
+      })
+    ).rejects.toMatchObject({ code: "bad_request_error", message: "You already booked this slot" });
+  });
+
   it("uses event type team-ness and attendee timezone for availability", async () => {
     const { service, eventTypeRepository, availableSlotsService, waitlistEntryRepository } = setup();
     eventTypeRepository.findByIdMinimal.mockResolvedValue({
@@ -183,7 +245,6 @@ describe("WaitlistService", () => {
     const offered = await service.offerNextForSlot({
       eventTypeId: 10,
       startTime: slotStart,
-      endTime: slotEnd,
     });
 
     expect(offered?.status).toBe("OFFERED");
@@ -209,9 +270,7 @@ describe("WaitlistService", () => {
       slots: { day: [{ time: slotStart.toISOString() }] },
     });
 
-    await expect(
-      service.offerNextForSlot({ eventTypeId: 10, startTime: slotStart, endTime: slotEnd })
-    ).resolves.toBeNull();
+    await expect(service.offerNextForSlot({ eventTypeId: 10, startTime: slotStart })).resolves.toBeNull();
     expect(waitlistEntryRepository.transitionStatus).not.toHaveBeenCalled();
   });
 
@@ -258,6 +317,36 @@ describe("WaitlistService", () => {
     );
   });
 
+  it("compensates an offered entry when scheduling expiry fails", async () => {
+    const { service, waitlistEntryRepository, selectedSlotRepository, tasker, availableSlotsService } =
+      setup();
+    const pending = entry();
+    waitlistEntryRepository.findNextPendingForSlot.mockResolvedValue(pending);
+    waitlistEntryRepository.transitionStatus
+      .mockResolvedValueOnce({ count: 1 })
+      .mockResolvedValueOnce({ count: 1 });
+    tasker.create.mockRejectedValue(new Error("tasker unavailable"));
+    availableSlotsService.getAvailableSlots.mockResolvedValue({
+      slots: { day: [{ time: slotStart.toISOString() }] },
+    });
+
+    await expect(service.offerNextForSlot({ eventTypeId: 10, startTime: slotStart })).rejects.toThrow(
+      "tasker unavailable"
+    );
+    expect(waitlistEntryRepository.transitionStatus).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        expectedStatus: "OFFERED",
+        data: expect.objectContaining({ status: "EXPIRED" }),
+      })
+    );
+    expect(selectedSlotRepository.releaseForWaitlist).toHaveBeenCalledWith({
+      eventTypeId: 10,
+      slot: { utcStartIso: slotStart.toISOString(), utcEndIso: slotEnd.toISOString() },
+      uid: pending.uid,
+    });
+  });
+
   it("passes attendee responses under the booking responses field", async () => {
     const { service, waitlistEntryRepository, regularBookingService } = setup();
     const offered = entry({
@@ -289,7 +378,7 @@ describe("WaitlistService", () => {
     });
   });
 
-  it("does not expire an offer when the claim transition loses a race", async () => {
+  it("returns the booking when the claim transition loses a race", async () => {
     const { service, waitlistEntryRepository } = setup();
     const offered = entry({
       status: "OFFERED",
@@ -299,10 +388,29 @@ describe("WaitlistService", () => {
     waitlistEntryRepository.transitionStatus.mockResolvedValue({ count: 0 });
     waitlistEntryRepository.findById.mockClear();
 
-    await expect(service.claim({ offerToken: "offer-token" })).rejects.toMatchObject({
-      code: "bad_request_error",
-    });
+    await expect(service.claim({ offerToken: "offer-token" })).resolves.toEqual({ id: 42 });
     expect(waitlistEntryRepository.findById).not.toHaveBeenCalled();
+  });
+
+  it("cleans up the reservation and expiry task after a successful claim", async () => {
+    const { service, waitlistEntryRepository, selectedSlotRepository, tasker } = setup();
+    const offered = entry({
+      status: "OFFERED",
+      offerExpiresAt: new Date("2029-12-31T12:15:00.000Z"),
+    });
+    waitlistEntryRepository.findByOfferToken.mockResolvedValue(offered);
+    waitlistEntryRepository.transitionStatus.mockResolvedValue({ count: 1 });
+
+    await expect(service.claim({ offerToken: "offer-token" })).resolves.toEqual({ id: 42 });
+    expect(selectedSlotRepository.releaseForWaitlist).toHaveBeenCalledWith({
+      eventTypeId: offered.eventTypeId,
+      slot: {
+        utcStartIso: offered.startTime.toISOString(),
+        utcEndIso: offered.endTime.toISOString(),
+      },
+      uid: offered.uid,
+    });
+    expect(tasker.cancelWithReference).toHaveBeenCalledWith(offered.uid, "expireWaitlistOffer");
   });
 
   it("expires without cascading when booking reports an unavailable slot", async () => {

@@ -11,6 +11,7 @@ import type { ISelectedSlotRepository } from "@calcom/features/selectedSlots/rep
 import type { Tasker } from "@calcom/features/tasker/tasker";
 import { ErrorCode } from "@calcom/lib/errorCodes";
 import { ErrorWithCode } from "@calcom/lib/errors";
+import logger from "@calcom/lib/logger";
 import { CreationSource } from "@calcom/prisma/enums";
 import type { AvailableSlotsService } from "@calcom/trpc/server/routers/viewer/slots/util";
 import { uuid } from "short-uuid";
@@ -23,6 +24,7 @@ const SLOT_UNAVAILABLE_ERROR_CODES: Set<string> = new Set([
   ErrorCode.BookingConflict,
   ErrorCode.NoAvailableUsersFound,
 ]);
+const log = logger.getSubLogger({ prefix: ["WaitlistService"] });
 
 type WaitlistEventType = {
   id: number;
@@ -153,8 +155,11 @@ export class WaitlistService {
       startTime,
       attendeeEmail: attendee.email,
     });
-    if (existing) {
+    if (existing?.status === "PENDING" || existing?.status === "OFFERED") {
       return existing;
+    }
+    if (existing?.status === "CLAIMED") {
+      throw ErrorWithCode.Factory.BadRequest("You already booked this slot");
     }
 
     const now = this.now();
@@ -191,6 +196,42 @@ export class WaitlistService {
       throw ErrorWithCode.Factory.BadRequest("The waitlist is full");
     }
 
+    if (existing) {
+      const transition = await this.deps.waitlistEntryRepository.transitionStatus({
+        id: existing.id,
+        expectedStatus: existing.status,
+        data: {
+          status: "PENDING",
+          offerToken: null,
+          offeredAt: null,
+          offerExpiresAt: null,
+          claimedBookingId: null,
+        },
+      });
+      if (transition.count > 0) {
+        return {
+          ...existing,
+          status: "PENDING",
+          offeredAt: null,
+          offerExpiresAt: null,
+          claimedBookingId: null,
+        };
+      }
+
+      const current = await this.deps.waitlistEntryRepository.findBySlotAndEmail({
+        eventTypeId,
+        startTime,
+        attendeeEmail: attendee.email,
+      });
+      if (current?.status === "PENDING" || current?.status === "OFFERED") {
+        return current;
+      }
+      if (current?.status === "CLAIMED") {
+        throw ErrorWithCode.Factory.BadRequest("You already booked this slot");
+      }
+      throw ErrorWithCode.Factory.BadRequest("Waitlist entry could not be reactivated");
+    }
+
     const data: WaitlistEntryCreateData = {
       uid: uuid(),
       eventTypeId,
@@ -224,11 +265,9 @@ export class WaitlistService {
   async offerNextForSlot({
     eventTypeId,
     startTime,
-    endTime,
   }: {
     eventTypeId: number;
     startTime: Date;
-    endTime?: Date;
   }): Promise<WaitlistEntryRecord | null> {
     if (!(await this.deps.featureRepository.checkIfFeatureIsEnabledGlobally(FEATURE_FLAG))) {
       return null;
@@ -251,12 +290,11 @@ export class WaitlistService {
     if (!pending) {
       return null;
     }
-    const slotEndTime = endTime ?? pending.endTime;
     if (
       !(await this.isSlotAvailable({
         eventTypeId,
         startTime,
-        endTime: slotEndTime,
+        endTime: pending.endTime,
         timeZone: pending.attendeeTimeZone,
         isTeamEvent: eventType.teamId !== null || eventType.schedulingType === "MANAGED",
       }))
@@ -278,7 +316,7 @@ export class WaitlistService {
       eventTypeId,
       slot: {
         utcStartIso: startTime.toISOString(),
-        utcEndIso: slotEndTime.toISOString(),
+        utcEndIso: pending.endTime.toISOString(),
       },
       uid: pending.uid,
       releaseAt: offerExpiresAt,
@@ -304,30 +342,18 @@ export class WaitlistService {
           eventTypeId,
           slot: {
             utcStartIso: startTime.toISOString(),
-            utcEndIso: slotEndTime.toISOString(),
+            utcEndIso: pending.endTime.toISOString(),
           },
           uid: pending.uid,
         });
         return null;
       }
-
-      await this.deps.tasker.create(
-        "expireWaitlistOffer",
-        { entryId: pending.id },
-        { scheduledAt: offerExpiresAt, referenceUid: pending.uid }
-      );
-      return {
-        ...pending,
-        status: "OFFERED",
-        offeredAt: now,
-        offerExpiresAt,
-      };
     } catch (error) {
       await this.deps.selectedSlotRepository.releaseForWaitlist({
         eventTypeId,
         slot: {
           utcStartIso: startTime.toISOString(),
-          utcEndIso: slotEndTime.toISOString(),
+          utcEndIso: pending.endTime.toISOString(),
         },
         uid: pending.uid,
       });
@@ -336,6 +362,41 @@ export class WaitlistService {
       }
       throw error;
     }
+
+    try {
+      await this.deps.tasker.create(
+        "expireWaitlistOffer",
+        { entryId: pending.id },
+        { scheduledAt: offerExpiresAt, referenceUid: pending.uid }
+      );
+    } catch (error) {
+      await this.deps.waitlistEntryRepository.transitionStatus({
+        id: pending.id,
+        expectedStatus: "OFFERED",
+        data: {
+          status: "EXPIRED",
+          offerToken: null,
+          offeredAt: null,
+          offerExpiresAt: null,
+        },
+      });
+      await this.deps.selectedSlotRepository.releaseForWaitlist({
+        eventTypeId,
+        slot: {
+          utcStartIso: startTime.toISOString(),
+          utcEndIso: pending.endTime.toISOString(),
+        },
+        uid: pending.uid,
+      });
+      throw error;
+    }
+
+    return {
+      ...pending,
+      status: "OFFERED",
+      offeredAt: now,
+      offerExpiresAt,
+    };
   }
 
   async claim({ offerToken }: { offerToken: string }) {
@@ -390,7 +451,35 @@ export class WaitlistService {
       },
     });
     if (transition.count === 0) {
-      throw ErrorWithCode.Factory.BadRequest("Waitlist offer is no longer available");
+      log.warn("Waitlist offer lost the claim transition race", {
+        entryId: entry.id,
+        bookingId: booking.id,
+      });
+      return booking;
+    }
+
+    try {
+      await this.deps.selectedSlotRepository.releaseForWaitlist({
+        eventTypeId: entry.eventTypeId,
+        slot: {
+          utcStartIso: entry.startTime.toISOString(),
+          utcEndIso: entry.endTime.toISOString(),
+        },
+        uid: entry.uid,
+      });
+    } catch (error) {
+      log.error("Failed to release the waitlist reservation after claim", {
+        entryId: entry.id,
+        errorName: error instanceof Error ? error.name : "unknown_error",
+      });
+    }
+    try {
+      await this.deps.tasker.cancelWithReference(entry.uid, "expireWaitlistOffer");
+    } catch (error) {
+      log.error("Failed to cancel the waitlist expiry task after claim", {
+        entryId: entry.id,
+        errorName: error instanceof Error ? error.name : "unknown_error",
+      });
     }
     return booking;
   }
@@ -421,7 +510,6 @@ export class WaitlistService {
       await this.offerNextForSlot({
         eventTypeId: entry.eventTypeId,
         startTime: entry.startTime,
-        endTime: entry.endTime,
       });
     }
   }
@@ -457,7 +545,6 @@ export class WaitlistService {
       await this.offerNextForSlot({
         eventTypeId: entry.eventTypeId,
         startTime: entry.startTime,
-        endTime: entry.endTime,
       });
     }
 
