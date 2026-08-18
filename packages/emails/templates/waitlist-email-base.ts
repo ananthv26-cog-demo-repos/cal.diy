@@ -37,27 +37,19 @@ export abstract class WaitlistEmailBase extends BaseEmail {
     return {
       attendeeName: this.data.attendeeName,
       eventTitle: this.data.eventTitle,
-      startTime: this.getFormattedRecipientTime({
+      startTime: `${this.getFormattedRecipientTime({
         time: this.data.startTime.toISOString(),
         format: "MMM D, YYYY h:mm A",
-      }),
-      endTime: this.getFormattedRecipientTime({
-        time: this.data.endTime.toISOString(),
-        format: "MMM D, YYYY h:mm A",
-      }),
+      })} (${this.getTimezone()})`,
       expiry: this.data.offerExpiresAt
-        ? this.getFormattedRecipientTime({
+        ? `${this.getFormattedRecipientTime({
             time: this.data.offerExpiresAt.toISOString(),
-            format: "MMM D, YYYY h:mm A z",
-          })
+            format: "MMM D, YYYY h:mm A",
+          })} (${this.getTimezone()})`
         : undefined,
       ...links,
       language: this.data.language,
     };
-  }
-
-  protected subject(key: string) {
-    return this.data.language(key, { title: this.data.eventTitle });
   }
 }
 

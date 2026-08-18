@@ -1,3 +1,4 @@
+import { EMAIL_FROM_NAME } from "@calcom/lib/constants";
 import renderEmail from "../src/renderEmail";
 import { WaitlistEmailBase, type WaitlistEmailData } from "./waitlist-email-base";
 
@@ -10,6 +11,7 @@ export default class WaitlistJoinedEmail extends WaitlistEmailBase {
   protected async getNodeMailerPayload(): Promise<Record<string, unknown>> {
     const props = this.getProps();
     return {
+      from: `${EMAIL_FROM_NAME} <${this.getMailerOptions().from}>`,
       to: this.data.attendeeEmail,
       subject: this.data.language("waitlist_joined_subject", { title: this.data.eventTitle }),
       html: await renderEmail("WaitlistJoinedEmail", props),

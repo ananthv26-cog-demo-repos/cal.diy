@@ -6,7 +6,6 @@ export type WaitlistEmailProps = {
   attendeeName: string;
   eventTitle: string;
   startTime: string;
-  endTime: string;
   expiry?: string;
   claimLink?: string;
   leaveLink: string;
@@ -44,7 +43,9 @@ const WaitlistEmail = (
         <p>{t("waitlist_offer_expires", { expiry: props.expiry })}</p>
       )}
       {props.mode === "expired" && <p>{t("waitlist_still_on_list")}</p>}
-      {props.claimLink && <CallToAction label={t("waitlist_claim_offer")} href={props.claimLink} />}
+      {props.mode === "offer" && props.claimLink && (
+        <CallToAction label={t("waitlist_claim_offer")} href={props.claimLink} />
+      )}
       <p>
         <a href={props.leaveLink}>{t("waitlist_leave")}</a>
       </p>
