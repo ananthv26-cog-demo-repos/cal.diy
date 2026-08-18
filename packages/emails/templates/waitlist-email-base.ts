@@ -1,5 +1,6 @@
 import { WEBAPP_URL } from "@calcom/lib/constants";
 import type { TFunction } from "i18next";
+import { sanitizeDisplayName } from "../lib/sanitizeDisplayName";
 import type { WaitlistEmailProps } from "../src/templates/WaitlistEmail";
 import BaseEmail from "./_base-email";
 
@@ -30,6 +31,10 @@ export abstract class WaitlistEmailBase extends BaseEmail {
 
   protected getLocale() {
     return "en";
+  }
+
+  protected getRecipient() {
+    return sanitizeDisplayName(`${this.data.attendeeName} <${this.data.attendeeEmail}>`);
   }
 
   protected getProps(): WaitlistEmailProps {

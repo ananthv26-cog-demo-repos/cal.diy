@@ -743,9 +743,10 @@ export const sendAddGuestsEmailsAndSMS = async (args: {
   await Promise.all(emailsAndSMSToSend);
 };
 
-export const sendWaitlistJoinedEmail = async (data: Omit<WaitlistEmailData, "language" | "offerToken">) => {
+export const sendWaitlistJoinedEmail = async (data: Omit<WaitlistEmailData, "language">) => {
   const language = await getTranslation("en", "common");
-  return sendEmail(() => new WaitlistJoinedEmail({ ...data, language }));
+  const { offerToken: _offerToken, ...waitlistData } = data;
+  return sendEmail(() => new WaitlistJoinedEmail({ ...waitlistData, language }));
 };
 
 export const sendWaitlistOfferEmail = async (
@@ -755,16 +756,14 @@ export const sendWaitlistOfferEmail = async (
   return sendEmail(() => new WaitlistOfferEmail({ ...data, language }));
 };
 
-export const sendWaitlistOfferExpiredEmail = async (
-  data: Omit<WaitlistEmailData, "language" | "offerToken">
-) => {
+export const sendWaitlistOfferExpiredEmail = async (data: Omit<WaitlistEmailData, "language">) => {
   const language = await getTranslation("en", "common");
-  return sendEmail(() => new WaitlistOfferExpiredEmail({ ...data, language }));
+  const { offerToken: _offerToken, ...waitlistData } = data;
+  return sendEmail(() => new WaitlistOfferExpiredEmail({ ...waitlistData, language }));
 };
 
-export const sendWaitlistCancelledEmail = async (
-  data: Omit<WaitlistEmailData, "language" | "offerToken">
-) => {
+export const sendWaitlistCancelledEmail = async (data: Omit<WaitlistEmailData, "language">) => {
   const language = await getTranslation("en", "common");
-  return sendEmail(() => new WaitlistCancelledEmail({ ...data, language }));
+  const { offerToken: _offerToken, ...waitlistData } = data;
+  return sendEmail(() => new WaitlistCancelledEmail({ ...waitlistData, language }));
 };

@@ -13,20 +13,23 @@ export default class WaitlistOfferEmail extends WaitlistEmailBase {
     const props = this.getProps();
     return {
       from: `${EMAIL_FROM_NAME} <${this.getMailerOptions().from}>`,
-      to: this.data.attendeeEmail,
-      subject: this.data.language("waitlist_offer_subject", { title: this.data.eventTitle }),
+      to: this.getRecipient(),
+      subject: decodeHTML(this.data.language("waitlist_offer_subject", { title: this.data.eventTitle })),
       html: await renderEmail("WaitlistOfferEmail", props),
-      text: decodeHTML(
-        [
+      text: [
+        decodeHTML(
           this.data.language("waitlist_offer_body", {
             title: this.data.eventTitle,
             start: props.startTime,
-          }),
-          this.data.language("waitlist_offer_expires", { expiry: props.expiry }),
-          `${this.data.language("waitlist_claim_offer")}: ${props.claimLink}`,
-          `${this.data.language("waitlist_leave")}: ${props.leaveLink}`,
-        ].join("\n")
-      ),
+          })
+        ),
+        props.expiry &&
+          `${decodeHTML(this.data.language("waitlist_offer_expires", { expiry: props.expiry }))}`,
+        props.claimLink && `${decodeHTML(this.data.language("waitlist_claim_offer"))}: ${props.claimLink}`,
+        `${decodeHTML(this.data.language("waitlist_leave"))}: ${props.leaveLink}`,
+      ]
+        .filter((line): line is string => Boolean(line))
+        .join("\n"),
     };
   }
 }

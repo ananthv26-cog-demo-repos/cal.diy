@@ -84,6 +84,72 @@ describe("waitlist emails", () => {
     expect(text).toContain(props.expiry);
   });
 
+  it("decodes event titles in both plaintext and rendered HTML", async () => {
+    const data = await createData();
+    data.eventTitle = "Bob's 1:1 & planning";
+    const emails = [
+      new TestWaitlistJoinedEmail(data),
+      new TestWaitlistOfferEmail(data),
+      new TestWaitlistOfferExpiredEmail(data),
+      new TestWaitlistCancelledEmail(data),
+    ];
+
+    for (const email of emails) {
+      const payload = await email.payload();
+      const text = String(payload.text);
+      const html = String(payload.html);
+
+      expect(text).toContain(data.eventTitle);
+      expect(html).toContain("Bob&#x27;s 1:1 &amp; planning");
+      expect(html).not.toContain("Bob&amp;#");
+      expect(html).not.toContain("&amp;amp;");
+    }
+  });
+
+  it("includes leave links in every plaintext payload", async () => {
+    const data = await createData();
+    const leaveLink = new TestWaitlistEmail(data).props().leaveLink;
+    const payloads = await Promise.all([
+      new TestWaitlistJoinedEmail(data).payload(),
+      new TestWaitlistOfferEmail(data).payload(),
+      new TestWaitlistOfferExpiredEmail(data).payload(),
+      new TestWaitlistCancelledEmail(data).payload(),
+    ]);
+
+    for (const payload of payloads) {
+      expect(String(payload.text)).toContain(leaveLink);
+    }
+  });
+
+  it("omits optional offer details from plaintext when unavailable", async () => {
+    const data = await createData();
+    data.offerExpiresAt = null;
+    data.offerToken = undefined;
+    const payload = await new TestWaitlistOfferEmail(data).payload();
+    const text = String(payload.text);
+
+    expect(text).not.toContain("undefined");
+    expect(text).not.toContain("This offer expires");
+    expect(text).not.toContain("Claim this spot");
+    expect(text).toContain(new TestWaitlistEmail(data).props().leaveLink);
+  });
+
+  it("sanitizes the attendee display name in every recipient", async () => {
+    const data = await createData();
+    data.attendeeName = "Attendee, Name";
+    const expectedRecipient = "Attendee Name <attendee@example.com>";
+    const payloads = await Promise.all([
+      new TestWaitlistJoinedEmail(data).payload(),
+      new TestWaitlistOfferEmail(data).payload(),
+      new TestWaitlistOfferExpiredEmail(data).payload(),
+      new TestWaitlistCancelledEmail(data).payload(),
+    ]);
+
+    for (const payload of payloads) {
+      expect(payload.to).toBe(expectedRecipient);
+    }
+  });
+
   it("renders the expiry and start time with the attendee timezone", async () => {
     const data = await createData();
     const email = new TestWaitlistEmail(data);
