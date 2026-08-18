@@ -21,6 +21,10 @@
       "schedule": "0 0 * * *"
     },
     {
+      "path": "/api/cron/waitlistSweep",
+      "schedule": "*/5 * * * *"
+    },
+    {
       "path": "/api/cron/credentials",
       "schedule": "*/5 * * * *"
     },

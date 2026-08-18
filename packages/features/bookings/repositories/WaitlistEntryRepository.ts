@@ -184,4 +184,15 @@ export class WaitlistEntryRepository implements IWaitlistEntryRepository {
       },
     });
   }
+
+  async listActiveBefore({ now, limit }: { now: Date; limit: number }): Promise<WaitlistEntryRecord[]> {
+    return this.prismaClient.waitlistEntry.findMany({
+      where: {
+        startTime: { lt: now },
+        status: { in: ["PENDING", "OFFERED"] },
+      },
+      take: limit,
+      select: waitlistEntrySelect,
+    });
+  }
 }

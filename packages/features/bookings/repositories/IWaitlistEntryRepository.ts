@@ -68,4 +68,6 @@ export interface IWaitlistEntryRepository {
   }): Promise<{ count: number }>;
 
   expireStaleOffers(params: { now: Date }): Promise<{ count: number }>;
+
+  listActiveBefore(params: { now: Date; limit: number }): Promise<WaitlistEntryRecord[]>;
 }

@@ -25,6 +25,10 @@ type TaskPayloads = {
     typeof import("@calcom/features/webhooks/lib/types/webhookTask").webhookTaskPayloadSchema
   >;
   expireWaitlistOffer: z.infer<typeof import("./tasks/expireWaitlistOffer").expireWaitlistOfferPayloadSchema>;
+  offerNextWaitlistEntry: z.infer<
+    typeof import("./tasks/offerNextWaitlistEntry").offerNextWaitlistEntryPayloadSchema
+  >;
+  sweepWaitlist: z.infer<typeof import("./tasks/sweepWaitlist").sweepWaitlistPayloadSchema>;
 };
 export type TaskTypes = keyof TaskPayloads;
 export type TaskHandler = (payload: string, taskId?: string) => Promise<void>;
