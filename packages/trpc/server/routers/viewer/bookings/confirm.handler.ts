@@ -438,8 +438,8 @@ export const confirmHandler = async ({ ctx, input }: ConfirmOptions) => {
       ];
     }
 
-    void getBookingEventHandlerService()
-      .onBookingDeclined({
+    try {
+      await getBookingEventHandlerService().onBookingDeclined({
         payload: {
           config: { isDryRun: false },
           booking: {
@@ -449,10 +449,10 @@ export const confirmHandler = async ({ ctx, input }: ConfirmOptions) => {
             endTime: booking.endTime,
           },
         },
-      })
-      .catch((error) => {
-        log.error("Failed to dispatch waitlist offer after decline", safeStringify(error));
       });
+    } catch (error) {
+      log.error("Failed to dispatch waitlist offer after decline", safeStringify(error));
+    }
 
     if (emailsEnabled) {
       await sendDeclinedEmailsAndSMS(evt, booking.eventType?.metadata as EventTypeMetadata);

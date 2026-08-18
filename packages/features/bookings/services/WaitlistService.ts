@@ -501,7 +501,7 @@ export class WaitlistService {
       }
       return eventType;
     };
-    await Promise.all(
+    const results = await Promise.allSettled(
       pastEntries.map(async (entry) => {
         const transition = await this.deps.waitlistEntryRepository.transitionStatus({
           id: entry.id,
@@ -533,6 +533,14 @@ export class WaitlistService {
         );
       })
     );
+    results.forEach((result, index) => {
+      if (result.status === "rejected") {
+        this.log.error(
+          "Failed to sweep waitlist entry",
+          safeStringify({ entryId: pastEntries[index].id, error: result.reason })
+        );
+      }
+    });
   }
 
   async leave({ uid, token }: { uid?: string; token?: string }) {

@@ -503,8 +503,8 @@ async function handler(input: CancelBookingInput, dependencies?: Dependencies) {
     log.error("Error deleting event", error);
   }
   if (bookingToDelete.eventTypeId) {
-    void getBookingEventHandlerService()
-      .onBookingCancelled({
+    try {
+      await getBookingEventHandlerService().onBookingCancelled({
         payload: {
           config: { isDryRun: false },
           booking: {
@@ -514,10 +514,10 @@ async function handler(input: CancelBookingInput, dependencies?: Dependencies) {
             endTime: bookingToDelete.endTime,
           },
         },
-      })
-      .catch((error) => {
-        log.error("Failed to dispatch waitlist offer after cancellation", safeStringify(error));
       });
+    } catch (error) {
+      log.error("Failed to dispatch waitlist offer after cancellation", safeStringify(error));
+    }
   }
   return {
     success: true,

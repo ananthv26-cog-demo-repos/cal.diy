@@ -192,6 +192,7 @@ export class WaitlistEntryRepository implements IWaitlistEntryRepository {
         status: { in: ["PENDING", "OFFERED"] },
       },
       take: limit,
+      orderBy: [{ startTime: "asc" }, { createdAt: "asc" }],
       select: waitlistEntrySelect,
     });
   }
