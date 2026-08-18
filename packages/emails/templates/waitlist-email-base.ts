@@ -63,9 +63,7 @@ export abstract class WaitlistEmailBase extends BaseEmail {
 
 export function waitlistLinks(data: WaitlistEmailData) {
   return {
-    claimLink: data.offerToken
-      ? `${WEBAPP_URL}/waitlist/claim?token=${encodeURIComponent(data.offerToken)}`
-      : undefined,
+    claimLink: data.offerToken ? `${WEBAPP_URL}/waitlist/${encodeURIComponent(data.offerToken)}` : undefined,
     leaveLink: `${WEBAPP_URL}/waitlist/leave?uid=${encodeURIComponent(data.uid)}`,
   };
 }

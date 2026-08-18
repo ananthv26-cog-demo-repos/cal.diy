@@ -41,6 +41,11 @@ type BookEventFormProps = {
     backButton?: string;
   };
   timeslot: string | null;
+  onJoinWaitlist?: (responses: Record<string, unknown>) => Promise<void>;
+  canJoinWaitlist?: boolean;
+  isJoiningWaitlist?: boolean;
+  hasJoinedWaitlist?: boolean;
+  waitlistJoinFailed?: boolean;
 };
 
 export const BookEventForm = ({
@@ -60,6 +65,11 @@ export const BookEventForm = ({
   confirmButtonDisabled,
   classNames,
   timeslot,
+  onJoinWaitlist,
+  canJoinWaitlist = false,
+  isJoiningWaitlist = false,
+  hasJoinedWaitlist = false,
+  waitlistJoinFailed = false,
 }: Omit<BookEventFormProps, "event"> & {
   eventQuery: {
     isError: boolean;
@@ -108,6 +118,12 @@ export const BookEventForm = ({
   }
 
   const watchedCfToken = bookingForm.watch("cfToken");
+  const handleJoinWaitlist = async () => {
+    if (!onJoinWaitlist || !(await bookingForm.trigger())) return;
+    const responses = bookingForm.getValues("responses");
+    if (!responses || typeof responses !== "object" || Array.isArray(responses)) return;
+    await onJoinWaitlist(responses);
+  };
 
   return (
     <div className="flex flex-col h-full">
@@ -171,6 +187,22 @@ export const BookEventForm = ({
                 />
               }
             />
+            {canJoinWaitlist && (
+              <div className="mt-3 flex flex-col gap-2">
+                {waitlistJoinFailed && <Alert severity="warning" message={t("waitlist_join_failed")} />}
+                {hasJoinedWaitlist ? (
+                  <Alert severity="info" message={t("waitlist_joined_confirmation")} />
+                ) : (
+                  <Button
+                    type="button"
+                    color="secondary"
+                    loading={isJoiningWaitlist}
+                    onClick={() => void handleJoinWaitlist()}>
+                    {t("waitlist_join_button")}
+                  </Button>
+                )}
+              </div>
+            )}
           </div>
         ) : null}
 
