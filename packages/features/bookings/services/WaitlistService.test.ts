@@ -6,6 +6,14 @@ import { WaitlistService } from "./WaitlistService";
 const slotStart = new Date("2030-01-01T10:00:00.000Z");
 const slotEnd = new Date("2030-01-01T11:00:00.000Z");
 
+class BookingConflictWithCode extends Error {
+  code = "unexpected_error";
+
+  constructor() {
+    super(ErrorCode.BookingConflict);
+  }
+}
+
 function entry(overrides: Partial<WaitlistEntryRecord> = {}): WaitlistEntryRecord {
   return {
     id: 1,
@@ -422,7 +430,7 @@ describe("WaitlistService", () => {
     waitlistEntryRepository.findByOfferToken.mockResolvedValue(offered);
     waitlistEntryRepository.findById.mockResolvedValue(offered);
     waitlistEntryRepository.transitionStatus.mockResolvedValue({ count: 1 });
-    regularBookingService.createBooking.mockRejectedValue(new Error(ErrorCode.BookingConflict));
+    regularBookingService.createBooking.mockRejectedValue(new BookingConflictWithCode());
 
     await expect(service.claim({ offerToken: "offer-token" })).rejects.toThrow(ErrorCode.BookingConflict);
     expect(waitlistEntryRepository.findNextPendingForSlot).not.toHaveBeenCalled();

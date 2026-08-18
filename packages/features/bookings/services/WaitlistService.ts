@@ -79,7 +79,9 @@ function isSlotUnavailableError(error: unknown): boolean {
     return false;
   }
   if (typeof error === "object" && "code" in error && typeof error.code === "string") {
-    return SLOT_UNAVAILABLE_ERROR_CODES.has(error.code);
+    if (SLOT_UNAVAILABLE_ERROR_CODES.has(error.code)) {
+      return true;
+    }
   }
   return SLOT_UNAVAILABLE_ERROR_CODES.has(error.message);
 }
