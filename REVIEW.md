@@ -15,7 +15,8 @@ enforces.
 3. Walk the blocking checks below. Report findings by severity, with file/line and a concrete fix.
 4. Skip CI noise, unrelated refactor suggestions, and style nits unless asked.
 
-Comment budget: prefer a handful of high-signal findings over an exhaustive list. If a file is
+Ordering, not a cap: report blocking findings first and never drop one to stay short, but state
+should-fix items and nits compactly so they don't crowd out the blocking tier. If a file is
 generated (`*.generated.*`, `packages/prisma/migrations/**`, `yarn.lock`, `i18n.lock`), do not
 review its contents.
 
@@ -98,7 +99,9 @@ recurring events deserve the most scrutiny in the whole codebase:
 - **Imports**: no barrel imports (`@calcom/ui` → `@calcom/ui/components/button`); `import type` for
   types; no new circular dependencies between packages.
 - **Structure**: early returns over nested conditionals; composition over prop drilling; repository
-  files suffixed `Repository`, services suffixed `Service` (PascalCase, no `.service.ts` style).
+  files suffixed `Repository`, services suffixed `Service` (PascalCase). The ban on `.service.ts`-style
+  dot suffixes applies to *newly added* files only — existing ones are being migrated progressively, so
+  don't flag a PR that merely touches them.
 - **Comments**: comments must explain *why*. Ask for removal of comments that restate the code or
   narrate the diff ("now we also check X").
 - **PR size**: >500 changed lines or >10 code files (excluding docs, lock files, generated files) —
@@ -125,7 +128,7 @@ out the blocking findings.
 | Area | Why |
 | --- | --- |
 | `packages/features/bookings/**`, `packages/features/availability/**` | Slot math, DST, double-booking risk |
-| `packages/features/ee/workflows/**` | Sends real email/SMS; misfires are user-visible |
+| `packages/emails/**`, `packages/features/tasker/**` | Sends real email and runs background jobs; misfires are user-visible |
 | `packages/app-store/**` | Credential handling and third-party token lifecycles |
 | `packages/prisma/schema.prisma` + `migrations/**` | Locking, backfills, irreversible changes |
 | `apps/api/v2/**` | Public contract — breaking changes hit external platform customers |
