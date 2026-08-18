@@ -11,12 +11,14 @@ import {
   useBookerResizeAnimation,
 } from "@calcom/features/bookings/Booker/config";
 import framerFeatures from "@calcom/features/bookings/Booker/framer-features";
+import { useBookerTime } from "@calcom/features/bookings/Booker/hooks/useBookerTime";
 import type { BookerProps } from "@calcom/features/bookings/Booker/types";
 import { isBookingDryRun } from "@calcom/features/bookings/Booker/utils/isBookingDryRun";
 import { isTimeSlotAvailable } from "@calcom/features/bookings/Booker/utils/isTimeslotAvailable";
 import { getQueryParam } from "@calcom/features/bookings/Booker/utils/query-param";
 import { Header } from "@calcom/features/bookings/components/Header";
 import { BookerSection } from "@calcom/features/bookings/components/Section";
+import type { WaitlistEntryJson } from "@calcom/features/bookings/repositories/IWaitlistEntryRepository";
 import { Dialog } from "@calcom/features/components/controlled-dialog";
 import { scrollIntoViewSmooth } from "@calcom/lib/browser/browser.utils";
 import {
@@ -26,11 +28,13 @@ import {
 } from "@calcom/lib/constants";
 import { useCompatSearchParams } from "@calcom/lib/hooks/useCompatSearchParams";
 import { BookerLayouts } from "@calcom/prisma/zod-utils";
+import { trpc } from "@calcom/trpc/react";
 import classNames from "@calcom/ui/classNames";
 import { DialogContent } from "@calcom/ui/components/dialog";
 import { UnpublishedEntity } from "@calcom/ui/components/unpublished-entity";
 import TurnstileCaptcha from "@calcom/web/modules/auth/components/Turnstile";
 import { useSkipConfirmStep } from "@calcom/web/modules/bookings/hooks/useSkipConfirmStep";
+import { useFlags } from "@calcom/web/modules/feature-flags/hooks/useFlags";
 import { useNonEmptyScheduleDays } from "@calcom/web/modules/schedules/hooks/useNonEmptyScheduleDays";
 import { AnimatePresence, LazyMotion, m } from "framer-motion";
 import { useEffect, useMemo, useRef } from "react";
@@ -51,6 +55,33 @@ import { OverlayCalendar } from "./OverlayCalendar/OverlayCalendar";
 import { SlotSelectionModalHeader } from "./SlotSelectionModalHeader";
 import { NotFound } from "./Unavailable";
 import { VerifyCodeDialog } from "./VerifyCodeDialog";
+
+const toWaitlistJson = (value: unknown): WaitlistEntryJson | undefined => {
+  if (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.reduce<WaitlistEntryJson[]>((items, item) => {
+      const parsed = toWaitlistJson(item);
+      if (parsed !== undefined) items.push(parsed);
+      return items;
+    }, []);
+  }
+  if (typeof value === "object") {
+    const result: Record<string, WaitlistEntryJson> = {};
+    Object.entries(value).forEach(([key, item]) => {
+      const parsed = toWaitlistJson(item);
+      if (parsed !== undefined) result[key] = parsed;
+    });
+    return result;
+  }
+  return undefined;
+};
 
 const BookerComponent = ({
   username,
@@ -153,7 +184,10 @@ const BookerComponent = ({
 
   const StickyOnDesktop = isMobile ? "div" : StickyBox;
 
-  const { bookerFormErrorRef, key, formEmail, bookingForm, errors: formErrors } = bookerForm;
+  const { bookerFormErrorRef, key, formEmail, formName, bookingForm, errors: formErrors } = bookerForm;
+  const { timezone } = useBookerTime();
+  const flags = useFlags();
+  const joinWaitlistMutation = trpc.viewer.waitlist.join.useMutation();
 
   const { handleBookEvent, errors, loadingStates } = bookings;
 
@@ -238,6 +272,31 @@ const BookerComponent = ({
       })
     : [];
 
+  const canJoinWaitlist = Boolean(
+    flags["slot-waitlist"] && event.data?.waitlistEnabled && selectedTimeslot && !rescheduleUid
+  );
+
+  const handleJoinWaitlist = async (responses: Record<string, unknown>) => {
+    if (!canJoinWaitlist || !event.data || !selectedTimeslot || !formName || !formEmail) return;
+    const attendeeName =
+      typeof formName === "string"
+        ? formName
+        : [formName.firstName, formName.lastName].filter(Boolean).join(" ");
+    const parsedResponses = toWaitlistJson(responses);
+    if (!attendeeName || !parsedResponses) return;
+    await joinWaitlistMutation.mutateAsync({
+      eventTypeId: event.data.id,
+      startTime: new Date(selectedTimeslot),
+      endTime: dayjs(selectedTimeslot).add(event.data.length, "minute").toDate(),
+      attendee: {
+        name: attendeeName,
+        email: formEmail,
+        timeZone: timezone,
+      },
+      responses: parsedResponses,
+    });
+  };
+
   const slot = getQueryParam("slot");
 
   useEffect(() => {
@@ -276,6 +335,11 @@ const BookerComponent = ({
         errorRef={bookerFormErrorRef}
         errors={{ ...formErrors, ...errors }}
         isTimeslotUnavailable={unavailableTimeSlots.includes(selectedTimeslot || "")}
+        onJoinWaitlist={handleJoinWaitlist}
+        canJoinWaitlist={canJoinWaitlist && unavailableTimeSlots.includes(selectedTimeslot || "")}
+        isJoiningWaitlist={joinWaitlistMutation.isPending}
+        hasJoinedWaitlist={joinWaitlistMutation.isSuccess}
+        waitlistJoinFailed={joinWaitlistMutation.isError}
         loadingStates={loadingStates}
         renderConfirmNotVerifyEmailButtonCond={renderConfirmNotVerifyEmailButtonCond}
         bookingForm={bookingForm}

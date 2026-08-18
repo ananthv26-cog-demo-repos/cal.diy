@@ -105,6 +105,7 @@ export const getPublicEventSelect = (fetchAllUsers: boolean) => {
     minimumRescheduleNotice: true,
     allowReschedulingCancelledBookings: true,
     seatsShowAvailabilityCount: true,
+    waitlistEnabled: true,
     bookingFields: true,
     teamId: true,
     team: {
