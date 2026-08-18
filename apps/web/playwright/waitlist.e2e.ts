@@ -64,14 +64,8 @@ test.describe("slot waitlist", () => {
     });
 
     const offeredEntry = await prisma.waitlistEntry.findUniqueOrThrow({ where: { id: entry.id } });
-    const claimParams = new URLSearchParams({
-      eventTitle: eventType.title,
-      startTime: startTime.toISOString(),
-      endTime: endTime.toISOString(),
-      attendeeTimeZone: "UTC",
-      offerExpiresAt: offeredEntry.offerExpiresAt?.toISOString() ?? "",
-    });
-    await page.goto(`/waitlist/${offeredEntry.offerToken}?${claimParams.toString()}`);
+    if (!offeredEntry.offerToken) throw new Error("Expected an offer token");
+    await page.goto(`/waitlist/${offeredEntry.offerToken}`);
     await page.getByRole("button", { name: "Confirm and book" }).click();
     await page.waitForURL(/\/booking-successful\//);
 

@@ -32,6 +32,7 @@ describe("waitlist offer email", () => {
     expect(props.expiry).toContain("Sep 28, 2025");
     expect(props.expiry).toContain("9:30 AM");
     expect(props.claimLink).toContain("token-only-in-link");
+    expect(props.claimLink).not.toContain("?");
     expect(props.attendeeName).not.toContain("token-only-in-link");
   });
 });

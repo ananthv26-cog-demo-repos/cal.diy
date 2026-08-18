@@ -5,13 +5,17 @@ import { useLocale } from "@calcom/lib/hooks/useLocale";
 import { trpc } from "@calcom/trpc/react";
 import { Alert } from "@calcom/ui/components/alert";
 import { Button } from "@calcom/ui/components/button";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 
 export default function WaitlistClaimPage() {
   const { t } = useLocale();
   const params = useParams<{ token: string }>();
   const router = useRouter();
-  const searchParams = useSearchParams();
+  const token = params.token;
+  const offerPreviewQuery = trpc.viewer.waitlist.getOfferPreview.useQuery(
+    { offerToken: token },
+    { enabled: Boolean(token) }
+  );
   const claimMutation = trpc.viewer.waitlist.claim.useMutation({
     onSuccess: (result) => {
       if (result.booking.uid) {
@@ -20,19 +24,6 @@ export default function WaitlistClaimPage() {
     },
   });
 
-  const token = params.token;
-  const eventTitle = searchParams.get("eventTitle") || t("waitlist_offer_title");
-  const attendeeTimeZone = searchParams.get("attendeeTimeZone") || "UTC";
-  const startTime = searchParams.get("startTime");
-  const endTime = searchParams.get("endTime");
-  const offerExpiresAt = searchParams.get("offerExpiresAt");
-  const formattedStart = startTime
-    ? dayjs(startTime).tz(attendeeTimeZone).format("dddd, MMMM D, YYYY h:mm A z")
-    : null;
-  const formattedEnd = endTime ? dayjs(endTime).tz(attendeeTimeZone).format("h:mm A z") : null;
-  const formattedExpiry = offerExpiresAt
-    ? dayjs(offerExpiresAt).tz(attendeeTimeZone).format("dddd, MMMM D, YYYY h:mm A z")
-    : null;
   const errorCode = claimMutation.error?.data?.code;
   const errorTitle =
     errorCode === "NOT_FOUND" ? t("waitlist_offer_invalid_title") : t("waitlist_offer_unavailable_title");
@@ -40,6 +31,72 @@ export default function WaitlistClaimPage() {
     errorCode === "NOT_FOUND"
       ? t("waitlist_offer_invalid_description")
       : t("waitlist_offer_unavailable_description");
+
+  if (offerPreviewQuery.isPending) {
+    return (
+      <main className="mx-auto flex min-h-screen max-w-xl items-center px-4 py-12">
+        <p className="text-subtle">{t("loading")}</p>
+      </main>
+    );
+  }
+
+  const preview = offerPreviewQuery.data;
+  if (offerPreviewQuery.isError || !preview || preview.status === "NOT_FOUND") {
+    return (
+      <main className="mx-auto flex min-h-screen max-w-xl items-center px-4 py-12">
+        <Alert
+          severity="warning"
+          title={t("waitlist_offer_invalid_title")}
+          message={t("waitlist_offer_invalid_description")}
+        />
+      </main>
+    );
+  }
+
+  if (preview.status === "EXPIRED") {
+    return (
+      <main className="mx-auto flex min-h-screen max-w-xl items-center px-4 py-12">
+        <Alert
+          severity="warning"
+          title={t("waitlist_offer_expired_title")}
+          message={t("waitlist_offer_expired_description")}
+        />
+      </main>
+    );
+  }
+
+  if (preview.status === "CLAIMED") {
+    return (
+      <main className="mx-auto flex min-h-screen max-w-xl items-center px-4 py-12">
+        <Alert
+          severity="warning"
+          title={t("waitlist_offer_claimed_title")}
+          message={t("waitlist_offer_claimed_description")}
+        />
+      </main>
+    );
+  }
+
+  if (preview.status === "CANCELLED" || !preview.entry || !preview.eventTitle) {
+    return (
+      <main className="mx-auto flex min-h-screen max-w-xl items-center px-4 py-12">
+        <Alert
+          severity="warning"
+          title={t("waitlist_offer_cancelled_title")}
+          message={t("waitlist_offer_cancelled_description")}
+        />
+      </main>
+    );
+  }
+
+  const { entry, eventTitle } = preview;
+  const formattedStart = dayjs(entry.startTime)
+    .tz(entry.attendeeTimeZone)
+    .format("dddd, MMMM D, YYYY h:mm A z");
+  const formattedEnd = dayjs(entry.endTime).tz(entry.attendeeTimeZone).format("h:mm A z");
+  const formattedExpiry = entry.offerExpiresAt
+    ? dayjs(entry.offerExpiresAt).tz(entry.attendeeTimeZone).format("dddd, MMMM D, YYYY h:mm A z")
+    : null;
 
   if (claimMutation.isError) {
     return (

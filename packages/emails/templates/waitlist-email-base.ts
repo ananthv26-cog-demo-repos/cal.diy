@@ -62,18 +62,8 @@ export abstract class WaitlistEmailBase extends BaseEmail {
 }
 
 export function waitlistLinks(data: WaitlistEmailData) {
-  const claimParams = new URLSearchParams({
-    eventTitle: data.eventTitle,
-    startTime: data.startTime.toISOString(),
-    endTime: data.endTime.toISOString(),
-    attendeeTimeZone: data.attendeeTimeZone,
-    ...(data.offerExpiresAt ? { offerExpiresAt: data.offerExpiresAt.toISOString() } : {}),
-  });
-
   return {
-    claimLink: data.offerToken
-      ? `${WEBAPP_URL}/waitlist/${encodeURIComponent(data.offerToken)}?${claimParams.toString()}`
-      : undefined,
+    claimLink: data.offerToken ? `${WEBAPP_URL}/waitlist/${encodeURIComponent(data.offerToken)}` : undefined,
     leaveLink: `${WEBAPP_URL}/waitlist/leave?uid=${encodeURIComponent(data.uid)}`,
   };
 }

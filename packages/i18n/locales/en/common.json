@@ -4795,5 +4795,11 @@
   "waitlist_offer_invalid_description": "The link may be incorrect or the offer has already been claimed.",
   "waitlist_offer_unavailable_title": "This waitlist offer is no longer available",
   "waitlist_offer_unavailable_description": "The offer expired or someone else booked this time. Please try another time.",
+  "waitlist_offer_expired_title": "This waitlist offer has expired",
+  "waitlist_offer_expired_description": "The offer is no longer available because its claim window has ended.",
+  "waitlist_offer_claimed_title": "This waitlist offer was already claimed",
+  "waitlist_offer_claimed_description": "This offer has already been used to book the meeting.",
+  "waitlist_offer_cancelled_title": "This waitlist offer was cancelled",
+  "waitlist_offer_cancelled_description": "This offer is no longer available. Please try another time.",
   "ADD_NEW_STRINGS_ABOVE_THIS_LINE_TO_PREVENT_MERGE_CONFLICTS": "↑↑↑↑↑↑↑↑↑↑↑↑↑ Add your new strings above here ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑"
 }
