@@ -1,13 +1,38 @@
-import type { WaitlistEntryForHostDto } from "@calcom/lib/dto/WaitlistEntryDto";
-import type { Prisma, WaitlistEntryStatus as PrismaWaitlistEntryStatus } from "@calcom/prisma/client";
+import type { WaitlistEntryForHostDto, WaitlistEntryStatus } from "@calcom/lib/dto/WaitlistEntryDto";
 
-export type WaitlistEntryRecord = Omit<WaitlistEntryForHostDto, "attendeeEmail"> & {
+export type WaitlistEntryRecord = WaitlistEntryForHostDto;
+
+export type WaitlistEntryJson =
+  | string
+  | number
+  | boolean
+  | null
+  | WaitlistEntryJson[]
+  | { [key: string]: WaitlistEntryJson };
+
+export interface WaitlistEntryCreateData {
+  uid: string;
+  eventTypeId: number;
+  startTime: Date;
+  endTime: Date;
+  attendeeName: string;
   attendeeEmail: string;
-};
+  attendeeTimeZone: string;
+  responses?: WaitlistEntryJson | null;
+  status?: WaitlistEntryStatus;
+  offerToken?: string | null;
+  offeredAt?: Date | null;
+  offerExpiresAt?: Date | null;
+  claimedBookingId?: number | null;
+}
 
-export type WaitlistEntryCreateData = Prisma.WaitlistEntryUncheckedCreateInput;
-
-export type WaitlistEntryStatusUpdate = Prisma.WaitlistEntryUpdateManyMutationInput;
+export interface WaitlistEntryStatusUpdate {
+  status: WaitlistEntryStatus;
+  offerToken?: string | null;
+  offeredAt?: Date | null;
+  offerExpiresAt?: Date | null;
+  claimedBookingId?: number | null;
+}
 
 export interface IWaitlistEntryRepository {
   create(data: WaitlistEntryCreateData): Promise<WaitlistEntryRecord>;
@@ -25,12 +50,12 @@ export interface IWaitlistEntryRepository {
 
   listForEventType(params: {
     eventTypeId: number;
-    status?: PrismaWaitlistEntryStatus;
-  }): Promise<WaitlistEntryForHostDto[]>;
+    status?: WaitlistEntryStatus;
+  }): Promise<WaitlistEntryRecord[]>;
 
   transitionStatus(params: {
     id: number;
-    expectedStatus: PrismaWaitlistEntryStatus;
+    expectedStatus: WaitlistEntryStatus;
     data: WaitlistEntryStatusUpdate;
   }): Promise<{ count: number }>;
 

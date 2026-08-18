@@ -1,5 +1,7 @@
+import type { WaitlistEntryStatus } from "@calcom/lib/dto/WaitlistEntryDto";
 import type { PrismaClient } from "@calcom/prisma";
-import type { Prisma, WaitlistEntryStatus as PrismaWaitlistEntryStatus } from "@calcom/prisma/client";
+import type { Prisma as PrismaTypes } from "@calcom/prisma/client";
+import { Prisma } from "@calcom/prisma/client";
 import type {
   IWaitlistEntryRepository,
   WaitlistEntryCreateData,
@@ -7,7 +9,7 @@ import type {
   WaitlistEntryStatusUpdate,
 } from "./IWaitlistEntryRepository";
 
-const waitlistEntrySelect: Prisma.WaitlistEntrySelect = {
+const waitlistEntrySelect: PrismaTypes.WaitlistEntrySelect = {
   id: true,
   uid: true,
   eventTypeId: true,
@@ -23,14 +25,37 @@ const waitlistEntrySelect: Prisma.WaitlistEntrySelect = {
   claimedBookingId: true,
   createdAt: true,
   updatedAt: true,
-} satisfies Prisma.WaitlistEntrySelect;
+} satisfies PrismaTypes.WaitlistEntrySelect;
+
+function toPrismaCreateData(data: WaitlistEntryCreateData): PrismaTypes.WaitlistEntryUncheckedCreateInput {
+  const { responses, ...rest } = data;
+  const prismaData: PrismaTypes.WaitlistEntryUncheckedCreateInput = rest;
+
+  if (responses === undefined) {
+    return prismaData;
+  }
+
+  if (responses === null) {
+    prismaData.responses = Prisma.JsonNull;
+  } else {
+    prismaData.responses = responses;
+  }
+
+  return prismaData;
+}
+
+function toPrismaStatusUpdate(
+  data: WaitlistEntryStatusUpdate
+): PrismaTypes.WaitlistEntryUpdateManyMutationInput {
+  return data;
+}
 
 export class WaitlistEntryRepository implements IWaitlistEntryRepository {
   constructor(private readonly prismaClient: PrismaClient) {}
 
   async create(data: WaitlistEntryCreateData): Promise<WaitlistEntryRecord> {
     return this.prismaClient.waitlistEntry.create({
-      data,
+      data: toPrismaCreateData(data),
       select: waitlistEntrySelect,
     });
   }
@@ -90,7 +115,7 @@ export class WaitlistEntryRepository implements IWaitlistEntryRepository {
     status,
   }: {
     eventTypeId: number;
-    status?: PrismaWaitlistEntryStatus;
+    status?: WaitlistEntryStatus;
   }): Promise<WaitlistEntryRecord[]> {
     const where: Prisma.WaitlistEntryWhereInput = { eventTypeId };
     if (status) {
@@ -110,12 +135,12 @@ export class WaitlistEntryRepository implements IWaitlistEntryRepository {
     data,
   }: {
     id: number;
-    expectedStatus: PrismaWaitlistEntryStatus;
+    expectedStatus: WaitlistEntryStatus;
     data: WaitlistEntryStatusUpdate;
   }): Promise<{ count: number }> {
     return this.prismaClient.waitlistEntry.updateMany({
       where: { id, status: expectedStatus },
-      data,
+      data: toPrismaStatusUpdate(data),
     });
   }
 
