@@ -100,8 +100,7 @@ export const WaitlistSettings = ({ eventTypeId, showToast }: WaitlistSettingsPro
                     <p className="font-medium text-emphasis">{entry.attendeeName}</p>
                     <p className="text-subtle">{entry.attendeeEmail}</p>
                     <p className="text-subtle">
-                      {dayjs(entry.startTime).tz(entry.attendeeTimeZone).format("MMM D, YYYY h:mm A")} (
-                      {entry.attendeeTimeZone}) ·{" "}
+                      {dayjs(entry.startTime).tz(entry.attendeeTimeZone).format("MMM D, YYYY h:mm A")} ·{" "}
                       {t("waitlist_attendee_timezone", { timezone: entry.attendeeTimeZone })} ·{" "}
                       {statusLabels[entry.status]}
                     </p>
