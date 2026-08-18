@@ -113,7 +113,7 @@ export const WaitlistSettings = ({ eventTypeId, showToast }: WaitlistSettingsPro
           {entriesQuery.isPending ? (
             <p className="mt-3 text-sm text-subtle">{t("loading")}</p>
           ) : entriesQuery.error ? (
-            <p className="mt-3 text-sm text-red-500">{t("waitlist_list_error")}</p>
+            <p className="mt-3 text-error text-sm">{t("waitlist_list_error")}</p>
           ) : activeEntries?.length ? (
             <div className="mt-4 space-y-3">
               {activeEntries.map((entry) => (
