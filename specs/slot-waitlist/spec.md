@@ -109,7 +109,7 @@ Migration notes:
 
 ### Data Layer
 
-- `packages/features/bookings/repositories/WaitlistEntryRepository.ts` (+ `IWaitlistEntryRepository.ts`),
+- `packages/features/bookings/repositories/PrismaWaitlistEntryRepository.ts` (+ `IWaitlistEntryRepository.ts`),
   following `BookingRepository.ts`. Only this file touches Prisma. Methods:
   `create`, `findByUid`, `findByOfferToken`, `findNextPendingForSlot`, `countActiveForSlot`,
   `listForEventType`, `transitionStatus`, `expireStaleOffers`.
