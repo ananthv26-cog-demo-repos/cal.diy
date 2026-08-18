@@ -30,6 +30,8 @@ type WaitlistEventType = {
   id: number;
   teamId: number | null;
   schedulingType: string | null;
+  length: number;
+  metadata: unknown;
   seatsPerTimeSlot: number | null;
   recurringEvent: unknown;
   waitlistEnabled: boolean;
@@ -84,6 +86,13 @@ function isSlotUnavailableError(error: unknown): boolean {
     }
   }
   return SLOT_UNAVAILABLE_ERROR_CODES.has(error.message);
+}
+
+function getMultipleDurations(metadata: unknown): number[] {
+  if (!isJsonRecord(metadata) || !Array.isArray(metadata.multipleDuration)) {
+    return [];
+  }
+  return metadata.multipleDuration.filter((duration): duration is number => typeof duration === "number");
 }
 
 export class WaitlistService {
@@ -152,6 +161,13 @@ export class WaitlistService {
   }): Promise<WaitlistEntryRecord> {
     await this.ensureFeatureEnabled();
     const eventType = await this.getEventType(eventTypeId);
+    const durationMinutes = (endTime.getTime() - startTime.getTime()) / 60_000;
+    if (!Number.isFinite(durationMinutes) || durationMinutes <= 0) {
+      throw ErrorWithCode.Factory.BadRequest("The waitlist slot must end after it starts");
+    }
+    if (![eventType.length, ...getMultipleDurations(eventType.metadata)].includes(durationMinutes)) {
+      throw ErrorWithCode.Factory.BadRequest("The waitlist slot duration is not supported");
+    }
     const existing = await this.deps.waitlistEntryRepository.findBySlotAndEmail({
       eventTypeId,
       startTime,
@@ -432,6 +448,19 @@ export class WaitlistService {
       },
     };
 
+    const consumed = await this.deps.waitlistEntryRepository.transitionStatus({
+      id: entry.id,
+      expectedStatus: "OFFERED",
+      data: {
+        status: "CLAIMED",
+        offerToken: null,
+        claimedBookingId: null,
+      },
+    });
+    if (consumed.count === 0) {
+      throw ErrorWithCode.Factory.NotFound("Waitlist offer not found");
+    }
+
     let booking: Awaited<ReturnType<RegularBookingService["createBooking"]>>;
     try {
       booking = await this.deps.regularBookingService.createBooking({ bookingData });
@@ -439,26 +468,19 @@ export class WaitlistService {
       await this.expireOffer({
         entryId: entry.id,
         cascade: !isSlotUnavailableError(error),
+        expectedStatus: "CLAIMED",
       });
       throw error;
     }
 
-    const transition = await this.deps.waitlistEntryRepository.transitionStatus({
+    await this.deps.waitlistEntryRepository.transitionStatus({
       id: entry.id,
-      expectedStatus: "OFFERED",
+      expectedStatus: "CLAIMED",
       data: {
         status: "CLAIMED",
-        offerToken: null,
         claimedBookingId: booking.id,
       },
     });
-    if (transition.count === 0) {
-      log.warn("Waitlist offer lost the claim transition race", {
-        entryId: entry.id,
-        bookingId: booking.id,
-      });
-      return booking;
-    }
 
     try {
       await this.deps.selectedSlotRepository.releaseForWaitlist({
@@ -486,14 +508,22 @@ export class WaitlistService {
     return booking;
   }
 
-  async expireOffer({ entryId, cascade = true }: { entryId: number; cascade?: boolean }) {
+  async expireOffer({
+    entryId,
+    cascade = true,
+    expectedStatus = "OFFERED",
+  }: {
+    entryId: number;
+    cascade?: boolean;
+    expectedStatus?: "OFFERED" | "CLAIMED";
+  }) {
     const entry = await this.deps.waitlistEntryRepository.findById(entryId);
     if (!entry) {
       return;
     }
     const transition = await this.deps.waitlistEntryRepository.transitionStatus({
       id: entry.id,
-      expectedStatus: "OFFERED",
+      expectedStatus,
       data: { status: "EXPIRED", offerToken: null },
     });
     if (transition.count === 0) {
