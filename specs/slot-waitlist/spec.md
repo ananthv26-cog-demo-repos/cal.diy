@@ -35,7 +35,7 @@ Attendees resort to polling the booking page. A waitlist converts cancellations 
 
 - Seated events (`EventType.seatsPerTimeSlot`) — the "slot is full" semantics differ; deferred.
 - Recurring events and multi-slot waitlist entries.
-- Round-robin fairness or priority ordering beyond FIFO by `createdAt`.
+- Round-robin fairness or priority ordering beyond FIFO by queue position.
 - Automatic booking on the attendee's behalf (offer requires an explicit claim).
 - Waitlisting a whole day or date range rather than one exact start time.
 - SMS/WhatsApp offer notifications (email only in v1).
@@ -49,10 +49,16 @@ Lifecycle:
 
 ```
 PENDING ──offer──> OFFERED ──claim──> CLAIMED (terminal)
-   │                  │
-   │                  └──expiry/decline──> EXPIRED (terminal) ──> offer cascades to next PENDING
+   ▲                  │
+   │                  ├──expiry/decline, offerCount < maxOffers──> back to PENDING, requeued at tail
+   │                  └──expiry/decline, offerCount = maxOffers──> EXPIRED (terminal)
    └──unsubscribe/host removal/slot start passed──> CANCELLED (terminal)
 ```
+
+A lapsed offer does **not** drop the attendee: the entry returns to `PENDING` with `queuedAt` reset to
+now (tail of the queue) and `offerCount` incremented, and the offer cascades to the next entry.
+`EXPIRED` is reached only after `maxOffers` (default 2) lapsed offers, so a repeatedly unresponsive
+attendee stops blocking the queue. Queue order is `queuedAt ASC`, not `createdAt`.
 
 Invariant: at most one `OFFERED` entry per (`eventTypeId`, `startTime`) at any moment. Enforced by a
 partial unique index plus a transactional state transition, not by application-level checks alone.
@@ -85,6 +91,9 @@ model WaitlistEntry {
   // Responses to the event type's booking questions, replayed on claim
   responses     Json?
   status        WaitlistEntryStatus @default(PENDING)
+  // Queue position key; reset to now() when a lapsed offer requeues the entry at the tail
+  queuedAt      DateTime            @default(now())
+  offerCount    Int                 @default(0)
   offerToken    String?             @unique
   offeredAt     DateTime?
   offerExpiresAt DateTime?
@@ -92,25 +101,35 @@ model WaitlistEntry {
   createdAt     DateTime            @default(now())
   updatedAt     DateTime            @updatedAt
 
-  @@index([eventTypeId, startTime, status, createdAt])
-  @@unique([eventTypeId, startTime, attendeeEmail])
+  @@index([eventTypeId, startTime, status, queuedAt])
 }
 ```
+
+`EventType` also needs the back-relation `waitlistEntries WaitlistEntry[]` — Prisma schema validation
+fails without it.
 
 Migration notes:
 
 - New table plus two nullable/defaulted columns on `EventType` (`waitlistEnabled Boolean @default(false)`,
   `waitlistMaxSize Int?`) — additive, no backfill, safe on a large `EventType` table.
-- The single-active-offer invariant needs a raw partial index in the migration SQL, since Prisma
-  cannot express it:
-  `CREATE UNIQUE INDEX "WaitlistEntry_single_active_offer" ON "WaitlistEntry" ("eventTypeId", "startTime") WHERE "status" = 'OFFERED';`
+- Two invariants need raw partial indexes in the migration SQL, since Prisma cannot express them:
+  - single active offer per slot —
+    `CREATE UNIQUE INDEX "WaitlistEntry_single_active_offer" ON "WaitlistEntry" ("eventTypeId", "startTime") WHERE "status" = 'OFFERED';`
+  - one *active* entry per email per slot —
+    `CREATE UNIQUE INDEX "WaitlistEntry_one_active_per_email" ON "WaitlistEntry" ("eventTypeId", "startTime", "attendeeEmail") WHERE "status" IN ('PENDING', 'OFFERED');`
+
+  Uniqueness is deliberately scoped to active statuses: a full `@@unique([eventTypeId, startTime, attendeeEmail])`
+  would permanently block someone who unsubscribed (`CANCELLED`) or lapsed (`EXPIRED`) from ever
+  rejoining that slot.
 - `startTime`/`endTime` stored UTC, as elsewhere in the schema. `attendeeTimeZone` is only for
   rendering the offer email.
 
 ### Data Layer
 
-- `packages/features/bookings/repositories/WaitlistEntryRepository.ts` (+ `IWaitlistEntryRepository.ts`),
-  following `BookingRepository.ts`. Only this file touches Prisma. Methods:
+- `packages/features/bookings/repositories/PrismaWaitlistEntryRepository.ts` (+ interface
+  `IWaitlistEntryRepository.ts`), following `PrismaBookingAttendeeRepository.ts` — Prisma-backed
+  repositories carry the technology prefix, with the class name matching the file name. Only this file
+  touches Prisma. Methods:
   `create`, `findByUid`, `findByOfferToken`, `findNextPendingForSlot`, `countActiveForSlot`,
   `listForEventType`, `transitionStatus`, `expireStaleOffers`.
 - `select` only — never `include`. `offerToken` is never selected into any DTO returned to a client.
@@ -130,10 +149,14 @@ Migration notes:
     checked through the existing slot pipeline
     (`packages/trpc/server/routers/viewer/slots/isAvailable.handler.ts` / `util.ts`), never
     reimplemented.
-  - Idempotent on (`eventTypeId`, `startTime`, `attendeeEmail`): re-joining returns the existing
-    entry rather than erroring.
+  - Idempotent per active entry: if the email already has a `PENDING`/`OFFERED` entry for the slot,
+    return it rather than erroring. If the previous entry is `CANCELLED` or `EXPIRED`, create a fresh
+    entry (the partial unique index allows this) — someone who unsubscribed and changed their mind
+    must be able to rejoin.
 - `offerNextForSlot({ eventTypeId, startTime })`
-  - Single transaction: verify the slot is genuinely open, pick the oldest `PENDING`, set `OFFERED`
+  - No-op if `startTime` is in the past or too close to leave a usable claim window.
+  - Single transaction: verify the slot is genuinely open, pick the `PENDING` entry with the smallest
+    `queuedAt`, set `OFFERED`
     with a fresh `offerToken` and `offerExpiresAt = now + offerTtlMinutes`, and reserve the slot via
     the existing `SelectedSlots` reservation path so a walk-in booker cannot take it mid-offer.
   - Enqueues an `expireWaitlistOffer` task and sends the offer email.
@@ -142,8 +165,15 @@ Migration notes:
   - Validates token, status, and expiry; then delegates to the *existing* booking pipeline
     (`packages/features/bookings/lib/handleNewBooking`) with the stored responses. Booking creation is
     not duplicated here.
-  - On success: `CLAIMED` + `claimedBookingId`; on booking failure: expire the offer and cascade.
-- `expireOffer({ entryId })` → `EXPIRED`, release the slot reservation, then `offerNextForSlot`.
+  - On success: `CLAIMED` + `claimedBookingId`.
+  - On booking failure, re-check slot availability to pick the branch — this is the discriminator, not
+    the error itself, since both cases surface as a failed booking attempt:
+    - slot still open (transient failure, e.g. calendar API error) → release this offer and cascade.
+    - slot genuinely gone (host blocked it, someone else booked) → release this offer and **do not**
+      cascade; nothing is left to offer, so cascading would burn every entry's `offerCount` on offers
+      that all fail.
+- `expireOffer({ entryId })` → requeue at tail (or `EXPIRED` once `offerCount` reaches `maxOffers`),
+  release the slot reservation, then `offerNextForSlot`.
 - `leave({ uid, token })` → `CANCELLED` (used by the email unsubscribe link).
 
 Errors use `ErrorWithCode` / `ErrorWithCode.Factory.*` (`packages/lib/errors`), never `TRPCError`, per
@@ -206,7 +236,8 @@ New templates in `packages/emails/templates/`, registered in `email-manager.ts`,
 
 - `attendee-waitlist-joined-email` — confirmation + leave link.
 - `attendee-waitlist-offer-email` — claim link, expiry time in the attendee's timezone, leave link.
-- `attendee-waitlist-offer-expired-email` — offer lapsed, still on the list.
+- `attendee-waitlist-offer-expired-email` — offer lapsed; states whether the entry was requeued or
+  removed after `maxOffers`.
 - `attendee-waitlist-cancelled-email` — slot passed or host removed the entry.
 
 Optional host digest is deferred (see Future Work).
@@ -216,7 +247,10 @@ Optional host digest is deferred (see Future Work).
 - Feature flag `slot-waitlist` via `packages/features/flags` (seeded per
   [data-prisma-feature-flags](../../agents/rules/data-prisma-feature-flags.md)); flag off ⇒ join is
   rejected, no offers are dispatched, and the UI affordance is hidden.
-- `offerTtlMinutes` constant, default 30, floored to the time remaining before `startTime`.
+- `offerTtlMinutes` constant, default 30, capped at the time remaining before `startTime` so an offer
+  window never extends past the slot itself. If that remaining time is ≤ a usable minimum, no offer is
+  made at all.
+- `maxOffers` constant, default 2 — lapsed offers beyond this move the entry to `EXPIRED`.
 - `waitlistMaxSize` default cap (e.g. 20) applied when the host leaves it unset.
 
 ## Edge Cases
@@ -229,8 +263,9 @@ Optional host digest is deferred (see Future Work).
 - **Claim after the host edited the event type** (duration, location, questions changed): re-validate
   against current event type config; if the stored responses no longer satisfy required fields, send
   the claimer through the booking form instead of a one-click claim.
-- **Claim for a slot that is no longer available** (host manually blocked it): expire the offer with a
-  "no longer available" email; do not cascade to the next entry for that slot.
+- **Claim for a slot that is no longer available** (host manually blocked it): release the offer with a
+  "no longer available" email and do not cascade — see the availability re-check discriminator in
+  `claim` above.
 - **Slot freed after `startTime` has passed**: no offers; sweep entries to `CANCELLED`.
 - **DST**: entries store UTC instants; the offer email renders in `attendeeTimeZone`. Never compute
   the offer window by adding 24h/day arithmetic.
@@ -245,10 +280,12 @@ Optional host digest is deferred (see Future Work).
 
 ## Testing
 
-- Vitest unit tests for `WaitlistService` state machine: join validation, FIFO ordering, cascade on
-  expiry, no-op on concurrent offer, claim-after-expiry rejection. Run with `TZ=UTC`.
-- Integration test for `WaitlistEntryRepository` covering the partial unique index behavior under two
-  concurrent offer attempts.
+- Vitest unit tests for `WaitlistService` state machine: join validation, FIFO ordering by `queuedAt`,
+  requeue-at-tail on expiry, `EXPIRED` only after `maxOffers`, rejoin after `CANCELLED`, cascade vs
+  no-cascade on claim failure, no-op on concurrent offer, claim-after-expiry rejection. Run with
+  `TZ=UTC`.
+- Integration test for `PrismaWaitlistEntryRepository` covering both partial unique indexes: two
+  concurrent offer attempts, and rejoin-after-cancel.
 - Test that cancelling a booking enqueues exactly one offer task, and that `offerToken` never appears
   in any DTO or tRPC response shape.
 - Playwright: enable waitlist → join from the Booker as attendee B → cancel A's booking → open the
@@ -272,7 +309,7 @@ inert in production because the flag and the event-type toggle are off.
 
 | # | Scope | Files | Est. lines | Reviewable alone? |
 | --- | --- | --- | --- | --- |
-| 1 | Schema + migration (incl. partial index) + `WaitlistEntryDto` + `WaitlistEntryRepository` + repo tests | ~6 | ~250 | Yes — data layer only, nothing calls it |
+| 1 | Schema + migration (incl. both partial indexes) + `WaitlistEntryDto` + `PrismaWaitlistEntryRepository` + repo tests | ~6 | ~250 | Yes — data layer only, nothing calls it |
 | 2 | `WaitlistService` state machine, DI wiring, tasker task, feature flag, unit tests | ~8 | ~300 | Yes — depends only on #1's repository interface |
 | 3 | Trigger wiring (`onBookingEvents` handler) + email templates | ~7 | ~250 | Yes — flag-gated, no UI |
 | 4 | tRPC router + Booker affordance + claim page + event-type setting + i18n + Playwright | ~10 | ~350 | Yes — first user-visible PR |
@@ -321,7 +358,9 @@ unreviewable, defeating the purpose.
   than inventing a second locking mechanism.
 - **ADR-004**: Offers dispatched via `tasker`, so cancellation latency and failure semantics are
   untouched.
-- **ADR-005**: FIFO by `createdAt`. Priority/weighted ordering is deferred until asked for.
+- **ADR-005**: FIFO by `queuedAt`, with a lapsed offer requeuing the entry at the tail rather than
+  dropping it. Dropping on first miss punishes a single missed email; unbounded requeues let one
+  unresponsive attendee stall the queue — hence the `maxOffers` cap.
 
 ## Future Work
 
