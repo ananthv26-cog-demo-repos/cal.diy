@@ -33,6 +33,7 @@ describe("waitlist offer email", () => {
     expect(props.expiry).toContain("9:30 AM");
     expect(props.claimLink).toContain("token-only-in-link");
     expect(props.claimLink).not.toContain("?");
+    expect(props.leaveLink).toContain("/waitlist/leave?uid=waitlist-1");
     expect(props.attendeeName).not.toContain("token-only-in-link");
   });
 });

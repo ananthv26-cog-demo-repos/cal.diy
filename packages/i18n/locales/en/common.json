@@ -4801,5 +4801,18 @@
   "waitlist_offer_claimed_description": "This offer has already been used to book the meeting.",
   "waitlist_offer_cancelled_title": "This waitlist offer was cancelled",
   "waitlist_offer_cancelled_description": "This offer is no longer available. Please try another time.",
+  "waitlist_leave_title": "Leave the waitlist",
+  "waitlist_leave_description": "Are you sure you want to leave this waitlist?",
+  "waitlist_leave_confirm_button": "Leave the waitlist",
+  "waitlist_leave_success_title": "You left the waitlist",
+  "waitlist_leave_success_description": "You have been removed from the waitlist.",
+  "waitlist_leave_invalid_title": "This waitlist link is invalid",
+  "waitlist_leave_invalid_description": "The link may be incorrect or the waitlist entry no longer exists.",
+  "waitlist_leave_unavailable_title": "This waitlist entry is no longer active",
+  "waitlist_leave_unavailable_description": "This waitlist entry could not be removed.",
+  "waitlist_leave_claimed_title": "This waitlist entry was already claimed",
+  "waitlist_leave_claimed_description": "This entry already has a booking and cannot be removed.",
+  "waitlist_leave_expired_title": "This waitlist offer has expired",
+  "waitlist_leave_expired_description": "This offer has expired, so there is no active offer to remove.",
   "ADD_NEW_STRINGS_ABOVE_THIS_LINE_TO_PREVENT_MERGE_CONFLICTS": "↑↑↑↑↑↑↑↑↑↑↑↑↑ Add your new strings above here ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑"
 }

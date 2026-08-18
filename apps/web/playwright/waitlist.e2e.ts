@@ -53,8 +53,23 @@ test.describe("slot waitlist", () => {
     await page.getByRole("button", { name: "Join the waitlist" }).click();
     await expect(page.getByText("You're on the waitlist")).toBeVisible();
 
-    const entry = await prisma.waitlistEntry.findFirstOrThrow({
+    let entry = await prisma.waitlistEntry.findFirstOrThrow({
       where: { eventTypeId: eventType.id, attendeeEmail: "waitlist-attendee@example.com" },
+    });
+    await page.goto(`/waitlist/leave?uid=${encodeURIComponent(entry.uid)}`);
+    await page.getByRole("button", { name: "Leave the waitlist" }).click();
+    await expect(page.getByText("You left the waitlist")).toBeVisible();
+    await expect
+      .poll(() => prisma.waitlistEntry.findUnique({ where: { id: entry.id } }))
+      .resolves.toMatchObject({ status: "CANCELLED" });
+
+    await page.goto(`/${user.username}/${eventType.slug}?slot=${encodeURIComponent(slot)}`);
+    await page.locator('[name="name"]').fill("Second waitlist attendee");
+    await page.locator('[name="email"]').fill("second-waitlist-attendee@example.com");
+    await page.getByRole("button", { name: "Join the waitlist" }).click();
+    await expect(page.getByText("You're on the waitlist")).toBeVisible();
+    entry = await prisma.waitlistEntry.findFirstOrThrow({
+      where: { eventTypeId: eventType.id, attendeeEmail: "second-waitlist-attendee@example.com" },
     });
     await occupiedBooking.delete();
     await getWaitlistService().offerNextForSlot({
