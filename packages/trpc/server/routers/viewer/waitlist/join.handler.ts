@@ -3,6 +3,7 @@ import { checkRateLimitAndThrowError } from "@calcom/lib/checkRateLimitAndThrowE
 import { WaitlistEntryDtoSchema } from "@calcom/lib/dto/WaitlistEntryDto";
 import { piiHasher } from "@calcom/lib/server/PiiHasher";
 import type { TRPCContext } from "../../../createContext";
+import { withWaitlistErrorMapping } from "./waitlist.error";
 import type { TWaitlistJoinInputSchema } from "./waitlist.schema";
 
 type JoinOptions = {
@@ -17,6 +18,6 @@ export const joinHandler = async ({ ctx, input }: JoinOptions) => {
     rateLimitingType: "core",
   });
 
-  const entry = await getWaitlistService().join(input);
+  const entry = await withWaitlistErrorMapping(() => getWaitlistService().join(input));
   return WaitlistEntryDtoSchema.parse(entry);
 };

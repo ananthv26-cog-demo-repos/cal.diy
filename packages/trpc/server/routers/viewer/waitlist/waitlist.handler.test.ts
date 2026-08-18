@@ -119,7 +119,7 @@ describe("waitlist tRPC procedures", () => {
           },
         },
       })
-    ).rejects.toMatchObject({ code: "forbidden_error" });
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
   it("claims with a valid token and rejects expired or unknown tokens", async () => {
@@ -145,12 +145,12 @@ describe("waitlist tRPC procedures", () => {
     mocks.service.claim.mockRejectedValueOnce(ErrorWithCode.Factory.BadRequest("Waitlist offer has expired"));
     await expect(
       claimHandler({ ctx: context(), input: { offerToken: "expired-token" } })
-    ).rejects.toMatchObject({ code: "bad_request_error" });
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
 
     mocks.service.claim.mockRejectedValueOnce(ErrorWithCode.Factory.NotFound("Waitlist offer not found"));
     await expect(
       claimHandler({ ctx: context(), input: { offerToken: "unknown-token" } })
-    ).rejects.toMatchObject({ code: "not_found_error" });
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 
   it("leaves a waitlist entry by its opaque token", async () => {
@@ -196,8 +196,8 @@ describe("waitlist tRPC procedures", () => {
     for (const status of ["NOT_FOUND", "EXPIRED", "CLAIMED", "CANCELLED"] as const) {
       mocks.service.getOfferPreview.mockResolvedValueOnce({
         status,
-        entry: status === "NOT_FOUND" ? null : { ...entry, status },
-        eventTitle: status === "NOT_FOUND" ? null : "Authoritative event",
+        entry: null,
+        eventTitle: null,
       });
       await expect(
         getOfferPreviewHandler({ ctx: context(), input: { offerToken: `${status}-token` } })

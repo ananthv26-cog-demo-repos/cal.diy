@@ -453,7 +453,6 @@ export class WaitlistService {
       entry: {
         ...entry,
         status: "CLAIMED",
-        offerExpiresAt: null,
         claimedBookingId: booking.id ?? null,
       },
       booking: {
@@ -469,28 +468,28 @@ export class WaitlistService {
       return { status: "NOT_FOUND", entry: null, eventTitle: null };
     }
 
+    if (entry.status !== "OFFERED") {
+      if (entry.status === "PENDING") {
+        return { status: "NOT_FOUND", entry: null, eventTitle: null };
+      }
+      return { status: entry.status, entry: null, eventTitle: null };
+    }
+
     const eventType = await this.deps.eventTypeRepository.findByIdMinimal({ id: entry.eventTypeId });
     if (!eventType) {
       return { status: "NOT_FOUND", entry: null, eventTitle: null };
     }
 
-    if (entry.status === "OFFERED" && entry.offerExpiresAt && entry.offerExpiresAt <= this.now()) {
+    if (!entry.offerExpiresAt || entry.offerExpiresAt <= this.now()) {
       await this.expireOffer({ entryId: entry.id });
       return {
         status: "EXPIRED",
-        entry: { ...entry, status: "EXPIRED", offerExpiresAt: null },
-        eventTitle: eventType.title,
+        entry: null,
+        eventTitle: null,
       };
     }
 
-    if (entry.status === "OFFERED") {
-      return { status: "OFFERED", entry, eventTitle: eventType.title };
-    }
-    if (entry.status === "PENDING") {
-      return { status: "NOT_FOUND", entry: null, eventTitle: null };
-    }
-
-    return { status: entry.status, entry, eventTitle: eventType.title };
+    return { status: "OFFERED", entry, eventTitle: eventType.title };
   }
 
   async expireOffer({ entryId, cascade = true }: { entryId: number; cascade?: boolean }) {
@@ -598,7 +597,7 @@ export class WaitlistService {
     if (!entry) {
       throw ErrorWithCode.Factory.NotFound("Waitlist entry not found");
     }
-    if (token && ["CLAIMED", "EXPIRED", "CANCELLED"].includes(entry.status)) {
+    if (["CLAIMED", "EXPIRED", "CANCELLED"].includes(entry.status)) {
       throw ErrorWithCode.Factory.NotFound("Waitlist entry not found");
     }
 

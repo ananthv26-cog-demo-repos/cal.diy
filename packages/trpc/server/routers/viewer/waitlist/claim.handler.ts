@@ -2,6 +2,7 @@ import { getWaitlistService } from "@calcom/features/bookings/di/WaitlistService
 import { checkRateLimitAndThrowError } from "@calcom/lib/checkRateLimitAndThrowError";
 import { WaitlistEntryDtoSchema } from "@calcom/lib/dto/WaitlistEntryDto";
 import type { TRPCContext } from "../../../createContext";
+import { withWaitlistErrorMapping } from "./waitlist.error";
 import type { TWaitlistClaimInputSchema } from "./waitlist.schema";
 
 type ClaimOptions = {
@@ -15,7 +16,7 @@ export const claimHandler = async ({ ctx, input }: ClaimOptions) => {
     rateLimitingType: "core",
   });
 
-  const result = await getWaitlistService().claim(input);
+  const result = await withWaitlistErrorMapping(() => getWaitlistService().claim(input));
   return {
     entry: WaitlistEntryDtoSchema.parse(result.entry),
     booking: result.booking,

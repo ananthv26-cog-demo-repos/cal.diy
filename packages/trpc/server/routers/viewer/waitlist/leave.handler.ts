@@ -2,6 +2,7 @@ import { getWaitlistService } from "@calcom/features/bookings/di/WaitlistService
 import { checkRateLimitAndThrowError } from "@calcom/lib/checkRateLimitAndThrowError";
 import { WaitlistEntryDtoSchema } from "@calcom/lib/dto/WaitlistEntryDto";
 import type { TRPCContext } from "../../../createContext";
+import { withWaitlistErrorMapping } from "./waitlist.error";
 import type { TWaitlistLeaveInputSchema } from "./waitlist.schema";
 
 type LeaveOptions = {
@@ -15,6 +16,6 @@ export const leaveHandler = async ({ ctx, input }: LeaveOptions) => {
     rateLimitingType: "core",
   });
 
-  const entry = await getWaitlistService().leave(input);
+  const entry = await withWaitlistErrorMapping(() => getWaitlistService().leave(input));
   return WaitlistEntryDtoSchema.parse(entry);
 };

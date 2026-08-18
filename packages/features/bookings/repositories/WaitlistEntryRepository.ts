@@ -176,11 +176,10 @@ export class WaitlistEntryRepository implements IWaitlistEntryRepository {
     return this.prismaClient.waitlistEntry.updateMany({
       where: {
         status: "OFFERED",
-        offerExpiresAt: { lt: now },
+        OR: [{ offerExpiresAt: { lt: now } }, { offerExpiresAt: null }],
       },
       data: {
         status: "EXPIRED",
-        offerToken: null,
       },
     });
   }

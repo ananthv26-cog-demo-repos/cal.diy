@@ -111,14 +111,17 @@ describe("WaitlistEntryRepository", () => {
     });
   });
 
-  it("expires only stale offers and invalidates their tokens", async () => {
+  it("expires offers with expired or missing expiries without invalidating their tokens", async () => {
     const now = new Date("2026-08-18T10:30:00.000Z");
     mockPrismaClient.waitlistEntry.updateMany.mockResolvedValue({ count: 1 });
 
     await expect(repository.expireStaleOffers({ now })).resolves.toEqual({ count: 1 });
     expect(mockPrismaClient.waitlistEntry.updateMany).toHaveBeenCalledWith({
-      where: { status: "OFFERED", offerExpiresAt: { lt: now } },
-      data: { status: "EXPIRED", offerToken: null },
+      where: {
+        status: "OFFERED",
+        OR: [{ offerExpiresAt: { lt: now } }, { offerExpiresAt: null }],
+      },
+      data: { status: "EXPIRED" },
     });
   });
 });

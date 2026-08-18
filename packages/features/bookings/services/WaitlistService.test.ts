@@ -304,7 +304,8 @@ describe("WaitlistService", () => {
       waitlistEntryRepository.findByOfferToken.mockResolvedValueOnce(entry({ status }));
       await expect(service.getOfferPreview({ offerToken: `${status}-token` })).resolves.toMatchObject({
         status,
-        eventTitle: "Test event",
+        entry: null,
+        eventTitle: null,
       });
     }
 
