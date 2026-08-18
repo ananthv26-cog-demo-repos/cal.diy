@@ -1,11 +1,98 @@
 import type { PrismaClient } from "@calcom/prisma";
 import type { Prisma } from "@calcom/prisma/client";
-
-import type { ISelectedSlotRepository } from "./ISelectedSlotRepository";
-import type { TimeSlot } from "./ISelectedSlotRepository";
+import type { ISelectedSlotRepository, TimeSlot } from "./ISelectedSlotRepository";
 
 export class PrismaSelectedSlotRepository implements ISelectedSlotRepository {
   constructor(private prismaClient: PrismaClient) {}
+
+  async reserveForWaitlist({
+    eventTypeId,
+    slot,
+    uid,
+    releaseAt,
+  }: {
+    eventTypeId: number;
+    slot: TimeSlot;
+    uid: string;
+    releaseAt: Date;
+  }): Promise<boolean> {
+    const eventType = await this.prismaClient.eventType.findUnique({
+      where: { id: eventTypeId },
+      select: {
+        seatsPerTimeSlot: true,
+        users: { select: { id: true } },
+        hosts: { select: { userId: true } },
+      },
+    });
+
+    if (!eventType || eventType.seatsPerTimeSlot) {
+      return false;
+    }
+
+    const userIds = Array.from(
+      new Set([...eventType.users.map((user) => user.id), ...eventType.hosts.map((host) => host.userId)])
+    );
+    if (userIds.length === 0) {
+      return false;
+    }
+
+    const reservedBySomeoneElse = await this.findReservedByOthers({ slot, eventTypeId, uid });
+    if (reservedBySomeoneElse) {
+      return false;
+    }
+
+    try {
+      await this.prismaClient.$transaction(
+        userIds.map((userId) =>
+          this.prismaClient.selectedSlots.upsert({
+            where: {
+              selectedSlotUnique: {
+                userId,
+                slotUtcStartDate: slot.utcStartIso,
+                slotUtcEndDate: slot.utcEndIso,
+                uid,
+              },
+            },
+            update: {
+              releaseAt,
+              eventTypeId,
+            },
+            create: {
+              userId,
+              eventTypeId,
+              slotUtcStartDate: slot.utcStartIso,
+              slotUtcEndDate: slot.utcEndIso,
+              uid,
+              releaseAt,
+              isSeat: false,
+            },
+          })
+        )
+      );
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async releaseForWaitlist({
+    eventTypeId,
+    slot,
+    uid,
+  }: {
+    eventTypeId: number;
+    slot: TimeSlot;
+    uid: string;
+  }): Promise<void> {
+    await this.prismaClient.selectedSlots.deleteMany({
+      where: {
+        eventTypeId,
+        uid,
+        slotUtcStartDate: slot.utcStartIso,
+        slotUtcEndDate: slot.utcEndIso,
+      },
+    });
+  }
 
   private async findFirst({ where }: { where: Prisma.SelectedSlotsWhereInput }) {
     return await this.prismaClient.selectedSlots.findFirst({
