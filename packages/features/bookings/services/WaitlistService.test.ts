@@ -553,4 +553,20 @@ describe("WaitlistService", () => {
       startTime: offered.startTime,
     });
   });
+
+  it("rejects leaving a claimed entry by uid", async () => {
+    const { service, waitlistEntryRepository } = setup();
+    waitlistEntryRepository.findByUid.mockResolvedValue(
+      entry({
+        status: "CLAIMED",
+        claimedBookingId: 42,
+      })
+    );
+
+    await expect(service.leave({ uid: "entry-1" })).rejects.toMatchObject({
+      code: "bad_request_error",
+      message: "Cannot leave a claimed waitlist entry",
+    });
+    expect(waitlistEntryRepository.transitionStatus).not.toHaveBeenCalled();
+  });
 });

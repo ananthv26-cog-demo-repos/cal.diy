@@ -555,6 +555,9 @@ export class WaitlistService {
     if (!entry) {
       throw ErrorWithCode.Factory.NotFound("Waitlist entry not found");
     }
+    if (uid && entry.status === "CLAIMED") {
+      throw ErrorWithCode.Factory.BadRequest("Cannot leave a claimed waitlist entry");
+    }
 
     const transition = await this.deps.waitlistEntryRepository.transitionStatus({
       id: entry.id,
