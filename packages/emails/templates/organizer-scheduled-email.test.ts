@@ -5,10 +5,10 @@ import OrganizerScheduledEmail from "./organizer-scheduled-email";
 
 vi.mock("@calcom/prisma", () => ({ prisma: {} }));
 
-vi.mock("../lib/generateIcsFile", () => ({
+// Spread the real module so GenerateIcsRole cannot drift from production values.
+vi.mock("../lib/generateIcsFile", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/generateIcsFile")>()),
   default: vi.fn(() => ({ filename: "event.ics", content: "ICS", method: "REQUEST" })),
-  // Values must mirror the real enum so role assertions catch a wrong constant.
-  GenerateIcsRole: { ATTENDEE: "attendee", ORGANIZER: "organizer" },
 }));
 
 vi.mock("../src/renderEmail", () => ({
@@ -72,13 +72,13 @@ describe("OrganizerScheduledEmail", () => {
   });
 
   it("generates an ICS attachment and rendered html", async () => {
-    const generateIcsFile = (await import("../lib/generateIcsFile")).default;
+    const { default: generateIcsFile, GenerateIcsRole } = await import("../lib/generateIcsFile");
     const calEvent = buildEvent();
     const payload = await new TestOrganizerScheduledEmail({ calEvent }).getPayload();
     expect(payload.icalEvent).toMatchObject({ method: "REQUEST" });
     expect(payload.html).toBe("<html>mock</html>");
     expect(generateIcsFile).toHaveBeenCalledWith(
-      expect.objectContaining({ role: "organizer", status: "CONFIRMED" })
+      expect.objectContaining({ role: GenerateIcsRole.ORGANIZER, status: "CONFIRMED" })
     );
   });
 

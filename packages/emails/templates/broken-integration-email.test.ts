@@ -24,12 +24,17 @@ const buildEvent = (overrides: Partial<CalendarEvent> = {}) => {
     vars ? `${key}:${JSON.stringify(vars)}` : key) as unknown as Person["language"]["translate"];
   return buildCalendarEvent({
     type: "30min",
+    // The subject exercises getFormattedDate, which resolves the organizer's zone/locale via
+    // dayjs — pin both so the builder's faker defaults can't make this flaky.
+    startTime: "2024-01-15T14:00:00.000Z",
+    endTime: "2024-01-15T15:00:00.000Z",
     organizer: buildPerson({
       name: "Org Owner",
       email: "owner@example.com",
+      timeZone: "UTC",
       language: { locale: "en", translate },
     }),
-    attendees: [buildPerson({ name: "Attendee One", email: "a@example.com" })],
+    attendees: [buildPerson({ name: "Attendee One", email: "a@example.com", timeZone: "UTC" })],
     ...overrides,
   });
 };

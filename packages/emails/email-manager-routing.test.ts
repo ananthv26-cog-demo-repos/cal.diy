@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // Shared spy registries populated by the mocked email/SMS classes below.
 const h = vi.hoisted(() => {
   const emailCtorArgs: Record<string, unknown[][]> = {};
+  const smsCtorArgs: Record<string, unknown[][]> = {};
   const smsAttendeeArgs: Record<string, unknown[][]> = {};
 
   const record = (registry: Record<string, unknown[][]>, name: string, args: unknown[]) => {
@@ -25,8 +26,8 @@ const h = vi.hoisted(() => {
 
   const makeSmsMock = (name: string) => ({
     default: class {
-      constructor(..._args: unknown[]) {
-        /* no-op */
+      constructor(...args: unknown[]) {
+        record(smsCtorArgs, name, args);
       }
       sendSMSToAttendee(...args: unknown[]) {
         record(smsAttendeeArgs, name, args);
@@ -38,7 +39,7 @@ const h = vi.hoisted(() => {
     },
   });
 
-  return { emailCtorArgs, smsAttendeeArgs, makeEmailMock, makeSmsMock };
+  return { emailCtorArgs, smsCtorArgs, smsAttendeeArgs, makeEmailMock, makeSmsMock };
 });
 
 vi.mock("@calcom/prisma", () => ({ prisma: {} }));
@@ -91,6 +92,7 @@ const attendeeDisabled: EventTypeMetadata = { disableStandardEmails: { all: { at
 
 beforeEach(() => {
   for (const key of Object.keys(h.emailCtorArgs)) delete h.emailCtorArgs[key];
+  for (const key of Object.keys(h.smsCtorArgs)) delete h.smsCtorArgs[key];
   for (const key of Object.keys(h.smsAttendeeArgs)) delete h.smsAttendeeArgs[key];
 });
 
@@ -101,12 +103,18 @@ describe("sendReassignedScheduledEmailsAndSMS", () => {
       buildMember({ email: "m2@example.com", phoneNumber: "+15551234567" } as Partial<Person>),
     ];
 
-    await sendReassignedScheduledEmailsAndSMS({ calEvent: buildEvent(), members });
+    const calEvent = buildEvent();
+
+    await sendReassignedScheduledEmailsAndSMS({ calEvent, members });
 
     expect(h.emailCtorArgs.OrganizerScheduledEmail).toHaveLength(2);
     const smsCalls = h.smsAttendeeArgs.EventSuccessfullyScheduledSMS ?? [];
     expect(smsCalls).toHaveLength(1);
     expect(smsCalls[0]?.[0]).toBe(members[1]);
+    // A single SMS instance is constructed for the whole loop, from the unformatted event.
+    const smsCtorCalls = h.smsCtorArgs.EventSuccessfullyScheduledSMS ?? [];
+    expect(smsCtorCalls).toHaveLength(1);
+    expect(smsCtorCalls[0]?.[0]).toBe(calEvent);
   });
 
   it("returns early and sends nothing when host emails are disabled", async () => {

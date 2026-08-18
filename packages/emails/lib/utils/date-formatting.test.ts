@@ -4,6 +4,11 @@ import type { TFunction } from "i18next";
 import { describe, expect, it } from "vitest";
 import { getFormattedDate } from "./date-formatting";
 
+// These expectations assume TZ=UTC (the repo's test convention). They are not TZ-independent:
+// getFormattedDate calls `.tz(zone).locale(locale)`, and dayjs drops the timezone binding on
+// `.locale()`, so on a non-UTC host the rendered time is shifted by the host offset. Documented
+// in the PR description rather than fixed here, since this file is test-only.
+
 // Echoing translate so we can assert which day/month tokens were looked up.
 const translate = ((key: string) => `t(${key})`) as unknown as TFunction;
 
