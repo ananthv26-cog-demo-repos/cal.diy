@@ -13,6 +13,7 @@ import { ZGetBookingDetailsInputSchema } from "./getBookingDetails.schema";
 import { ZGetBookingHistoryInputSchema } from "./getBookingHistory.schema";
 import { ZGetWrongAssignmentReportsInputSchema } from "./getWrongAssignmentReports.schema";
 import { ZHasWrongAssignmentReportInputSchema } from "./hasWrongAssignmentReport.schema";
+import { ZPreviewReminderInputSchema } from "./previewReminder.schema";
 import { ZReportBookingInputSchema } from "./reportBooking.schema";
 import { ZReportWrongAssignmentInputSchema } from "./reportWrongAssignment.schema";
 import { ZRequestRescheduleInputSchema } from "./requestReschedule.schema";
@@ -78,6 +79,15 @@ export const bookingsRouter = router({
         input,
       });
     }),
+
+  previewReminder: authedProcedure.input(ZPreviewReminderInputSchema).query(async ({ input, ctx }) => {
+    const { previewReminderHandler } = await import("./previewReminder.handler");
+
+    return previewReminderHandler({
+      ctx,
+      input,
+    });
+  }),
 
   getBookingDetails: authedProcedure.input(ZGetBookingDetailsInputSchema).query(async ({ input, ctx }) => {
     const { getBookingDetailsHandler } = await import("./getBookingDetails.handler");
