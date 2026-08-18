@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   service: {
     join: vi.fn(),
     claim: vi.fn(),
+    getOfferPreview: vi.fn(),
     leave: vi.fn(),
     remove: vi.fn(),
     listForEventType: vi.fn(),
@@ -29,6 +30,7 @@ vi.mock("@calcom/features/auth/lib/userFromSessionUtils", () => ({
 
 import { waitlistRouter } from "./_router";
 import { claimHandler } from "./claim.handler";
+import { getOfferPreviewHandler } from "./getOfferPreview.handler";
 import { joinHandler } from "./join.handler";
 import { leaveHandler } from "./leave.handler";
 
@@ -162,6 +164,45 @@ describe("waitlist tRPC procedures", () => {
     expect(mocks.service.leave).toHaveBeenCalledWith({ token: "opaque-offer-token" });
     expect(result).not.toHaveProperty("attendeeEmail");
     expect(result).not.toHaveProperty("offerToken");
+  });
+
+  it("returns authoritative offer preview data without exposing credentials", async () => {
+    mocks.service.getOfferPreview.mockResolvedValue({
+      status: "OFFERED",
+      entry: {
+        ...entry,
+        status: "OFFERED",
+        offerExpiresAt: new Date("2029-12-31T12:30:00.000Z"),
+      },
+      eventTitle: "Authoritative event",
+    });
+
+    const result = await getOfferPreviewHandler({
+      ctx: context(),
+      input: { offerToken: "opaque-offer-token" },
+    });
+
+    expect(result).toMatchObject({
+      status: "OFFERED",
+      eventTitle: "Authoritative event",
+      entry: {
+        status: "OFFERED",
+        offerExpiresAt: new Date("2029-12-31T12:30:00.000Z"),
+      },
+    });
+    expect(result.entry).not.toHaveProperty("attendeeEmail");
+    expect(result.entry).not.toHaveProperty("offerToken");
+
+    for (const status of ["NOT_FOUND", "EXPIRED", "CLAIMED", "CANCELLED"] as const) {
+      mocks.service.getOfferPreview.mockResolvedValueOnce({
+        status,
+        entry: status === "NOT_FOUND" ? null : { ...entry, status },
+        eventTitle: status === "NOT_FOUND" ? null : "Authoritative event",
+      });
+      await expect(
+        getOfferPreviewHandler({ ctx: context(), input: { offerToken: `${status}-token` } })
+      ).resolves.toMatchObject({ status });
+    }
   });
 
   it("rejects hosts without event-type ownership for listing and removal", async () => {

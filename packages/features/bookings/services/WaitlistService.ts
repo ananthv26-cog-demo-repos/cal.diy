@@ -74,6 +74,12 @@ export type WaitlistClaimResult = {
   };
 };
 
+export type WaitlistOfferPreviewResult = {
+  status: "OFFERED" | "EXPIRED" | "CLAIMED" | "CANCELLED" | "NOT_FOUND";
+  entry: WaitlistEntryRecord | null;
+  eventTitle: string | null;
+};
+
 function newOfferToken(): string {
   return randomBytes(32).toString("base64url");
 }
@@ -437,7 +443,6 @@ export class WaitlistService {
       expectedStatus: "OFFERED",
       data: {
         status: "CLAIMED",
-        offerToken: null,
         claimedBookingId: booking.id,
       },
     });
@@ -458,6 +463,36 @@ export class WaitlistService {
     };
   }
 
+  async getOfferPreview({ offerToken }: { offerToken: string }): Promise<WaitlistOfferPreviewResult> {
+    const entry = await this.deps.waitlistEntryRepository.findByOfferToken(offerToken);
+    if (!entry) {
+      return { status: "NOT_FOUND", entry: null, eventTitle: null };
+    }
+
+    const eventType = await this.deps.eventTypeRepository.findByIdMinimal({ id: entry.eventTypeId });
+    if (!eventType) {
+      return { status: "NOT_FOUND", entry: null, eventTitle: null };
+    }
+
+    if (entry.status === "OFFERED" && entry.offerExpiresAt && entry.offerExpiresAt <= this.now()) {
+      await this.expireOffer({ entryId: entry.id });
+      return {
+        status: "EXPIRED",
+        entry: { ...entry, status: "EXPIRED", offerExpiresAt: null },
+        eventTitle: eventType.title,
+      };
+    }
+
+    if (entry.status === "OFFERED") {
+      return { status: "OFFERED", entry, eventTitle: eventType.title };
+    }
+    if (entry.status === "PENDING") {
+      return { status: "NOT_FOUND", entry: null, eventTitle: null };
+    }
+
+    return { status: entry.status, entry, eventTitle: eventType.title };
+  }
+
   async expireOffer({ entryId, cascade = true }: { entryId: number; cascade?: boolean }) {
     const entry = await this.deps.waitlistEntryRepository.findById(entryId);
     if (!entry) {
@@ -466,7 +501,7 @@ export class WaitlistService {
     const transition = await this.deps.waitlistEntryRepository.transitionStatus({
       id: entry.id,
       expectedStatus: "OFFERED",
-      data: { status: "EXPIRED", offerToken: null },
+      data: { status: "EXPIRED" },
     });
     if (transition.count === 0) {
       return;
@@ -525,7 +560,7 @@ export class WaitlistService {
         const transition = await this.deps.waitlistEntryRepository.transitionStatus({
           id: entry.id,
           expectedStatus: entry.status,
-          data: { status: "CANCELLED", offerToken: null },
+          data: { status: "CANCELLED" },
         });
         if (transition.count === 0) return;
         if (entry.status === "OFFERED") {
@@ -563,11 +598,14 @@ export class WaitlistService {
     if (!entry) {
       throw ErrorWithCode.Factory.NotFound("Waitlist entry not found");
     }
+    if (token && ["CLAIMED", "EXPIRED", "CANCELLED"].includes(entry.status)) {
+      throw ErrorWithCode.Factory.NotFound("Waitlist entry not found");
+    }
 
     const transition = await this.deps.waitlistEntryRepository.transitionStatus({
       id: entry.id,
       expectedStatus: entry.status,
-      data: { status: "CANCELLED", offerToken: null },
+      data: { status: "CANCELLED" },
     });
     if (transition.count === 0) {
       return entry;

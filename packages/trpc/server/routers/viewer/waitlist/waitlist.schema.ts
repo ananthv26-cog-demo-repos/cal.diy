@@ -29,6 +29,8 @@ export const ZWaitlistClaimInputSchema = z.object({
   offerToken: z.string().min(1),
 });
 
+export const ZWaitlistOfferPreviewInputSchema = ZWaitlistClaimInputSchema;
+
 export const ZWaitlistLeaveInputSchema = z
   .object({
     uid: z.string().min(1).optional(),
@@ -50,6 +52,7 @@ export const ZWaitlistRemoveInputSchema = z.object({
 
 export type TWaitlistJoinInputSchema = z.infer<typeof ZWaitlistJoinInputSchema>;
 export type TWaitlistClaimInputSchema = z.infer<typeof ZWaitlistClaimInputSchema>;
+export type TWaitlistOfferPreviewInputSchema = z.infer<typeof ZWaitlistOfferPreviewInputSchema>;
 export type TWaitlistLeaveInputSchema = z.infer<typeof ZWaitlistLeaveInputSchema>;
 export type TWaitlistListForEventTypeInputSchema = z.infer<typeof ZWaitlistListForEventTypeInputSchema>;
 export type TWaitlistRemoveInputSchema = z.infer<typeof ZWaitlistRemoveInputSchema>;

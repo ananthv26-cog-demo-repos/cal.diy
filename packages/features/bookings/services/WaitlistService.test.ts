@@ -262,7 +262,7 @@ describe("WaitlistService", () => {
       expect.objectContaining({
         id: offered.id,
         expectedStatus: "OFFERED",
-        data: { status: "EXPIRED", offerToken: null },
+        data: { status: "EXPIRED" },
       })
     );
     expect(waitlistEntryRepository.findNextPendingForSlot).toHaveBeenCalled();
@@ -282,8 +282,39 @@ describe("WaitlistService", () => {
       code: "bad_request_error",
     });
     expect(waitlistEntryRepository.transitionStatus).toHaveBeenCalledWith(
-      expect.objectContaining({ data: { status: "EXPIRED", offerToken: null } })
+      expect.objectContaining({ data: { status: "EXPIRED" } })
     );
+  });
+
+  it("returns authoritative offer preview states", async () => {
+    const { service, waitlistEntryRepository, eventTypeRepository } = setup();
+    const offered = entry({
+      status: "OFFERED",
+      offerExpiresAt: new Date("2030-01-01T12:30:00.000Z"),
+    });
+    waitlistEntryRepository.findByOfferToken.mockResolvedValue(offered);
+
+    await expect(service.getOfferPreview({ offerToken: "offer-token" })).resolves.toMatchObject({
+      status: "OFFERED",
+      entry: offered,
+      eventTitle: "Test event",
+    });
+
+    for (const status of ["EXPIRED", "CLAIMED", "CANCELLED"] as const) {
+      waitlistEntryRepository.findByOfferToken.mockResolvedValueOnce(entry({ status }));
+      await expect(service.getOfferPreview({ offerToken: `${status}-token` })).resolves.toMatchObject({
+        status,
+        eventTitle: "Test event",
+      });
+    }
+
+    waitlistEntryRepository.findByOfferToken.mockResolvedValueOnce(null);
+    await expect(service.getOfferPreview({ offerToken: "unknown-token" })).resolves.toEqual({
+      status: "NOT_FOUND",
+      entry: null,
+      eventTitle: null,
+    });
+    expect(eventTypeRepository.findByIdMinimal).toHaveBeenCalled();
   });
 
   it("passes attendee responses under the booking responses field", async () => {
@@ -374,7 +405,7 @@ describe("WaitlistService", () => {
     expect(waitlistEntryRepository.transitionStatus).toHaveBeenCalledWith({
       id: past.id,
       expectedStatus: "PENDING",
-      data: { status: "CANCELLED", offerToken: null },
+      data: { status: "CANCELLED" },
     });
   });
 });

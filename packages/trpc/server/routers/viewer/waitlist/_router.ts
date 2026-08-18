@@ -7,6 +7,7 @@ import {
   ZWaitlistJoinInputSchema,
   ZWaitlistLeaveInputSchema,
   ZWaitlistListForEventTypeInputSchema,
+  ZWaitlistOfferPreviewInputSchema,
   ZWaitlistRemoveInputSchema,
 } from "./waitlist.schema";
 
@@ -18,6 +19,10 @@ export const waitlistRouter = router({
   claim: publicProcedure.input(ZWaitlistClaimInputSchema).mutation(async ({ ctx, input }) => {
     const { claimHandler } = await import("./claim.handler");
     return claimHandler({ ctx, input });
+  }),
+  getOfferPreview: publicProcedure.input(ZWaitlistOfferPreviewInputSchema).query(async ({ ctx, input }) => {
+    const { getOfferPreviewHandler } = await import("./getOfferPreview.handler");
+    return getOfferPreviewHandler({ ctx, input });
   }),
   leave: publicProcedure.input(ZWaitlistLeaveInputSchema).mutation(async ({ ctx, input }) => {
     const { leaveHandler } = await import("./leave.handler");
