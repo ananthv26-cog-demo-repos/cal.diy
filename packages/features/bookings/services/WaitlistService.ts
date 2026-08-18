@@ -22,8 +22,6 @@ const BOOKING_RESPONSE_RESERVED_KEYS: readonly string[] = ["eventTypeId", "start
 const SLOT_UNAVAILABLE_ERROR_CODES: Set<string> = new Set([
   ErrorCode.BookingConflict,
   ErrorCode.NoAvailableUsersFound,
-  ErrorCode.FixedHostsUnavailableForBooking,
-  ErrorCode.RoundRobinHostsUnavailableForBooking,
 ]);
 
 type WaitlistEventType = {
