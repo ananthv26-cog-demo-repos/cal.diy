@@ -461,6 +461,13 @@ export class WaitlistService {
       },
       uid: entry.uid,
     });
+    if (cascade) {
+      await this.offerNextForSlot({
+        eventTypeId: entry.eventTypeId,
+        startTime: entry.startTime,
+        endTime: entry.endTime,
+      });
+    }
     const eventType = await this.getEventType(entry.eventTypeId);
     await this.sendBestEffortNotification("offer expired", () =>
       sendWaitlistOfferExpiredEmail({
@@ -473,13 +480,6 @@ export class WaitlistService {
         endTime: entry.endTime,
       })
     );
-    if (cascade) {
-      await this.offerNextForSlot({
-        eventTypeId: entry.eventTypeId,
-        startTime: entry.startTime,
-        endTime: entry.endTime,
-      });
-    }
   }
 
   async sweep() {
