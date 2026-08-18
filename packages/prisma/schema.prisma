@@ -181,6 +181,7 @@ model EventType {
   teamId                             Int?
   hashedLink                         HashedLink[]
   bookings                           Booking[]
+  waitlistEntries                    WaitlistEntry[]
   availability                       Availability[]
   webhooks                           Webhook[]
   destinationCalendar                DestinationCalendar?
@@ -206,6 +207,8 @@ model EventType {
   requiresConfirmationWillBlockSlot  Boolean                @default(false)
   requiresConfirmationForFreeEmail   Boolean                @default(false)
   requiresBookerEmailVerification    Boolean                @default(false)
+  waitlistEnabled                    Boolean                @default(false)
+  waitlistMaxSize                    Int?
   canSendCalVideoTranscriptionEmails Boolean                @default(true)
 
   autoTranslateDescriptionEnabled          Boolean                @default(false)
@@ -848,6 +851,14 @@ enum BookingStatus {
   AWAITING_HOST @map("awaiting_host")
 }
 
+enum WaitlistEntryStatus {
+  PENDING
+  OFFERED
+  CLAIMED
+  EXPIRED
+  CANCELLED
+}
+
 model Booking {
   id                     Int                        @id @default(autoincrement())
   uid                    String                     @unique
@@ -927,6 +938,29 @@ model Booking {
   @@index([userId, status, startTime])
   @@index([eventTypeId, status])
   @@index([userId, createdAt])
+}
+
+model WaitlistEntry {
+  id               Int                 @id @default(autoincrement())
+  uid              String              @unique
+  eventTypeId      Int
+  eventType        EventType           @relation(fields: [eventTypeId], references: [id], onDelete: Cascade)
+  startTime        DateTime
+  endTime          DateTime
+  attendeeName     String
+  attendeeEmail    String
+  attendeeTimeZone String
+  responses        Json?
+  status           WaitlistEntryStatus @default(PENDING)
+  offerToken       String?             @unique
+  offeredAt        DateTime?
+  offerExpiresAt   DateTime?
+  claimedBookingId Int?                @unique
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  @@unique([eventTypeId, startTime, attendeeEmail])
+  @@index([eventTypeId, startTime, status, createdAt])
 }
 
 model Tracking {
