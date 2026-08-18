@@ -39,6 +39,16 @@ import type { BookerProps } from "@calcom/features/bookings/Booker/types";
 import type { WrappedBookerProps } from "../types";
 import { Booker } from "./Booker";
 
+const trpcTestState = vi.hoisted(() => ({
+  featureFlags: {} as Record<string, boolean>,
+  joinMutation: {
+    isError: false,
+    isPending: false,
+    isSuccess: false,
+    mutateAsync: vi.fn(),
+  },
+}));
+
 vi.mock("framer-motion", async (importOriginal) => {
   const actual = (await importOriginal()) as any;
   return {
@@ -46,20 +56,39 @@ vi.mock("framer-motion", async (importOriginal) => {
   };
 });
 
+vi.mock("@calcom/trpc/react", () => ({
+  trpc: {
+    viewer: {
+      features: {
+        map: {
+          useQuery: () => ({ data: trpcTestState.featureFlags }),
+        },
+      },
+      waitlist: {
+        join: {
+          useMutation: () => trpcTestState.joinMutation,
+        },
+      },
+    },
+  },
+}));
+
 // Mock components that we don't want to test
 vi.mock("./BookEventForm", () => ({
   BookEventForm: ({
     isTimeslotUnavailable,
     onCancel,
+    canJoinWaitlist,
   }: {
     isTimeslotUnavailable: boolean;
     onCancel: () => void;
+    canJoinWaitlist?: boolean;
   }) => {
-    console.log("BookEventForm Called", { isTimeslotUnavailable, onCancel });
     return (
       <div data-testid="book-event-form" data-unavailable={isTimeslotUnavailable}>
         Mock Book Event Form
         <button onClick={onCancel}>cancel</button>
+        {canJoinWaitlist && <button>Join the waitlist</button>}
       </div>
     );
   },
@@ -184,6 +213,7 @@ describe("Booker", () => {
       POWERED_BY_URL: "https://go.cal.com/booking",
       APP_NAME: "Cal.diy",
     });
+    trpcTestState.featureFlags = {};
     vi.clearAllMocks();
   });
 
@@ -261,6 +291,53 @@ describe("Booker", () => {
       });
       const bookEventForm = screen.getByTestId("book-event-form");
       await expect(bookEventForm).toHaveAttribute("data-unavailable", "true");
+    });
+
+    it("shows the waitlist affordance for an opted-in unavailable slot when enabled", () => {
+      trpcTestState.featureFlags = { "slot-waitlist": true };
+      const propsWithWaitlist = {
+        ...defaultProps,
+        event: {
+          ...mockEvent,
+          data: {
+            ...mockEvent.data,
+            waitlistEnabled: true,
+          },
+        },
+        slots: {
+          ...defaultProps.slots,
+          quickAvailabilityChecks: [{ utcStartIso: "2024-01-01T10:00:00Z", status: "unavailable" }],
+        },
+      };
+
+      render(<Booker {...(propsWithWaitlist as unknown as BookerProps & WrappedBookerProps)} />, {
+        mockStore: { state: "booking" },
+      });
+
+      expect(screen.getByRole("button", { name: "Join the waitlist" })).toBeInTheDocument();
+    });
+
+    it("hides the waitlist affordance when the global flag is disabled", () => {
+      const propsWithWaitlist = {
+        ...defaultProps,
+        event: {
+          ...mockEvent,
+          data: {
+            ...mockEvent.data,
+            waitlistEnabled: true,
+          },
+        },
+        slots: {
+          ...defaultProps.slots,
+          quickAvailabilityChecks: [{ utcStartIso: "2024-01-01T10:00:00Z", status: "unavailable" }],
+        },
+      };
+
+      render(<Booker {...(propsWithWaitlist as unknown as BookerProps & WrappedBookerProps)} />, {
+        mockStore: { state: "booking" },
+      });
+
+      expect(screen.queryByRole("button", { name: "Join the waitlist" })).not.toBeInTheDocument();
     });
   });
 });
