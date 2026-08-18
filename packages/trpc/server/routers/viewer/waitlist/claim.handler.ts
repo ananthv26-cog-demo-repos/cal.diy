@@ -15,6 +15,9 @@ export const claimHandler = async ({ ctx, input }: ClaimOptions) => {
     rateLimitingType: "core",
   });
 
-  const entry = await getWaitlistService().claim(input);
-  return WaitlistEntryDtoSchema.parse(entry);
+  const result = await getWaitlistService().claim(input);
+  return {
+    entry: WaitlistEntryDtoSchema.parse(result.entry),
+    booking: result.booking,
+  };
 };

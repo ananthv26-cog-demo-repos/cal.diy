@@ -66,6 +66,14 @@ type WaitlistServiceDependencies = {
   offerTtlMinutes?: number;
 };
 
+export type WaitlistClaimResult = {
+  entry: WaitlistEntryRecord;
+  booking: {
+    id: number | null;
+    uid: string | null;
+  };
+};
+
 function newOfferToken(): string {
   return randomBytes(32).toString("base64url");
 }
@@ -382,7 +390,7 @@ export class WaitlistService {
     }
   }
 
-  async claim({ offerToken }: { offerToken: string }): Promise<WaitlistEntryRecord> {
+  async claim({ offerToken }: { offerToken: string }): Promise<WaitlistClaimResult> {
     const entry = await this.deps.waitlistEntryRepository.findByOfferToken(offerToken);
     if (!entry || entry.status !== "OFFERED") {
       throw ErrorWithCode.Factory.NotFound("Waitlist offer not found");
@@ -437,10 +445,16 @@ export class WaitlistService {
       throw ErrorWithCode.Factory.BadRequest("Waitlist offer is no longer available");
     }
     return {
-      ...entry,
-      status: "CLAIMED",
-      offerExpiresAt: null,
-      claimedBookingId: booking.id ?? null,
+      entry: {
+        ...entry,
+        status: "CLAIMED",
+        offerExpiresAt: null,
+        claimedBookingId: booking.id ?? null,
+      },
+      booking: {
+        id: booking.id ?? null,
+        uid: booking.uid ?? null,
+      },
     };
   }
 

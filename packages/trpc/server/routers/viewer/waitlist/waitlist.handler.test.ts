@@ -122,17 +122,23 @@ describe("waitlist tRPC procedures", () => {
 
   it("claims with a valid token and rejects expired or unknown tokens", async () => {
     mocks.service.claim.mockResolvedValue({
-      ...entry,
-      status: "CLAIMED",
-      claimedBookingId: 42,
+      entry: {
+        ...entry,
+        status: "CLAIMED",
+        claimedBookingId: 42,
+      },
+      booking: { id: 42, uid: "booking-1" },
     });
     const valid = await claimHandler({
       ctx: context(),
       input: { offerToken: "opaque-offer-token" },
     });
-    expect(valid).toMatchObject({ status: "CLAIMED", claimedBookingId: 42 });
-    expect(valid).not.toHaveProperty("attendeeEmail");
-    expect(valid).not.toHaveProperty("offerToken");
+    expect(valid).toMatchObject({
+      entry: { status: "CLAIMED", claimedBookingId: 42 },
+      booking: { id: 42, uid: "booking-1" },
+    });
+    expect(valid.entry).not.toHaveProperty("attendeeEmail");
+    expect(valid.entry).not.toHaveProperty("offerToken");
 
     mocks.service.claim.mockRejectedValueOnce(ErrorWithCode.Factory.BadRequest("Waitlist offer has expired"));
     await expect(

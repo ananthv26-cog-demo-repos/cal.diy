@@ -83,7 +83,7 @@ function setup() {
     cancelWithReference: vi.fn(),
   };
   const regularBookingService = {
-    createBooking: vi.fn().mockResolvedValue({ id: 42 }),
+    createBooking: vi.fn().mockResolvedValue({ id: 42, uid: "booking-1" }),
   };
   const service = new WaitlistService({
     waitlistEntryRepository,
@@ -296,7 +296,7 @@ describe("WaitlistService", () => {
     waitlistEntryRepository.findByOfferToken.mockResolvedValue(offered);
     waitlistEntryRepository.transitionStatus.mockResolvedValue({ count: 1 });
 
-    await service.claim({ offerToken: "offer-token" });
+    const result = await service.claim({ offerToken: "offer-token" });
 
     expect(regularBookingService.createBooking).toHaveBeenCalledWith({
       bookingData: {
@@ -314,6 +314,11 @@ describe("WaitlistService", () => {
           email: offered.attendeeEmail,
         },
       },
+    });
+    expect(result.booking).toEqual({ id: 42, uid: "booking-1" });
+    expect(result.entry).toMatchObject({
+      status: "CLAIMED",
+      claimedBookingId: 42,
     });
   });
 
