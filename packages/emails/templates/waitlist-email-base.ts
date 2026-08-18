@@ -1,0 +1,63 @@
+import { WEBAPP_URL } from "@calcom/lib/constants";
+import type { TFunction } from "i18next";
+import type { WaitlistEmailProps } from "../src/templates/WaitlistEmail";
+import BaseEmail from "./_base-email";
+
+export type WaitlistEmailData = {
+  uid: string;
+  attendeeName: string;
+  attendeeEmail: string;
+  attendeeTimeZone: string;
+  eventTitle: string;
+  startTime: Date;
+  endTime: Date;
+  offerExpiresAt?: Date | null;
+  offerToken?: string;
+  language: TFunction;
+};
+
+export abstract class WaitlistEmailBase extends BaseEmail {
+  protected readonly data: WaitlistEmailData;
+
+  constructor(data: WaitlistEmailData) {
+    super();
+    this.data = data;
+  }
+
+  protected getTimezone() {
+    return this.data.attendeeTimeZone;
+  }
+
+  protected getLocale() {
+    return "en";
+  }
+
+  protected getProps(): WaitlistEmailProps {
+    const links = waitlistLinks(this.data);
+    return {
+      attendeeName: this.data.attendeeName,
+      eventTitle: this.data.eventTitle,
+      startTime: `${this.getFormattedRecipientTime({
+        time: this.data.startTime.toISOString(),
+        format: "MMM D, YYYY h:mm A",
+      })} (${this.getTimezone()})`,
+      expiry: this.data.offerExpiresAt
+        ? `${this.getFormattedRecipientTime({
+            time: this.data.offerExpiresAt.toISOString(),
+            format: "MMM D, YYYY h:mm A",
+          })} (${this.getTimezone()})`
+        : undefined,
+      ...links,
+      language: this.data.language,
+    };
+  }
+}
+
+export function waitlistLinks(data: WaitlistEmailData) {
+  return {
+    claimLink: data.offerToken
+      ? `${WEBAPP_URL}/waitlist/claim?token=${encodeURIComponent(data.offerToken)}`
+      : undefined,
+    leaveLink: `${WEBAPP_URL}/waitlist/leave?uid=${encodeURIComponent(data.uid)}`,
+  };
+}
