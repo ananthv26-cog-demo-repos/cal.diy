@@ -4791,6 +4791,8 @@
   "waitlist_slot_label": "Time",
   "waitlist_expiry_label": "Offer expires",
   "waitlist_claim_button": "Confirm and book",
+  "waitlist_booking_created_title": "Your booking was created",
+  "waitlist_booking_created_description": "Your booking was created, but we couldn't open the confirmation page. Booking reference: {{id}}.",
   "waitlist_offer_invalid_title": "This waitlist offer is invalid",
   "waitlist_offer_invalid_description": "The link may be incorrect or the offer has already been claimed.",
   "waitlist_offer_unavailable_title": "This waitlist offer is no longer available",

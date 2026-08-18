@@ -186,6 +186,7 @@ const BookerComponent = ({
 
   const { bookerFormErrorRef, key, formEmail, formName, bookingForm, errors: formErrors } = bookerForm;
   const { timezone } = useBookerTime();
+  const selectedDuration = useBookerStoreContext((state) => state.selectedDuration);
   const flags = useFlags();
   const joinWaitlistMutation = trpc.viewer.waitlist.join.useMutation();
 
@@ -284,17 +285,27 @@ const BookerComponent = ({
         : [formName.firstName, formName.lastName].filter(Boolean).join(" ");
     const parsedResponses = toWaitlistJson(responses);
     if (!attendeeName || !parsedResponses) return;
-    await joinWaitlistMutation.mutateAsync({
-      eventTypeId: event.data.id,
-      startTime: new Date(selectedTimeslot),
-      endTime: dayjs(selectedTimeslot).add(event.data.length, "minute").toDate(),
-      attendee: {
-        name: attendeeName,
-        email: formEmail,
-        timeZone: timezone,
-      },
-      responses: parsedResponses,
-    });
+    const validDuration = event.data.isDynamic
+      ? selectedDuration || event.data.length
+      : selectedDuration && event.data.metadata?.multipleDuration?.includes(selectedDuration)
+        ? selectedDuration
+        : event.data.length;
+
+    try {
+      await joinWaitlistMutation.mutateAsync({
+        eventTypeId: event.data.id,
+        startTime: new Date(selectedTimeslot),
+        endTime: dayjs(selectedTimeslot).add(validDuration, "minute").toDate(),
+        attendee: {
+          name: attendeeName,
+          email: formEmail,
+          timeZone: timezone,
+        },
+        responses: parsedResponses,
+      });
+    } catch {
+      return;
+    }
   };
 
   const slot = getQueryParam("slot");
@@ -364,6 +375,11 @@ const BookerComponent = ({
     formErrors,
     handleBookEvent,
     handleVerifyEmail,
+    canJoinWaitlist,
+    handleJoinWaitlist,
+    joinWaitlistMutation.isPending,
+    joinWaitlistMutation.isSuccess,
+    joinWaitlistMutation.isError,
     key,
     loadingStates,
     renderConfirmNotVerifyEmailButtonCond,

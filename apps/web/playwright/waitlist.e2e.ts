@@ -82,7 +82,7 @@ test.describe("slot waitlist", () => {
     if (!offeredEntry.offerToken) throw new Error("Expected an offer token");
     await page.goto(`/waitlist/${offeredEntry.offerToken}`);
     await page.getByRole("button", { name: "Confirm and book" }).click();
-    await page.waitForURL(/\/booking-successful\//);
+    await page.waitForURL(/\/booking\/[^/]+/);
 
     const bookingUid = new URL(page.url()).pathname.split("/").at(-1);
     expect(bookingUid).toBeTruthy();

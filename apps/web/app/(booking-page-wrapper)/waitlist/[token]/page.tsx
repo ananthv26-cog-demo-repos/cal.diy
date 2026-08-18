@@ -19,7 +19,7 @@ export default function WaitlistClaimPage() {
   const claimMutation = trpc.viewer.waitlist.claim.useMutation({
     onSuccess: (result) => {
       if (result.booking.uid) {
-        router.replace(`/booking-successful/${result.booking.uid}`);
+        router.replace(`/booking/${result.booking.uid}`);
       }
     },
   });
@@ -90,18 +90,36 @@ export default function WaitlistClaimPage() {
   }
 
   const { entry, eventTitle } = preview;
-  const formattedStart = dayjs(entry.startTime)
+  const formattedStart = `${dayjs(entry.startTime)
     .tz(entry.attendeeTimeZone)
-    .format("dddd, MMMM D, YYYY h:mm A z");
-  const formattedEnd = dayjs(entry.endTime).tz(entry.attendeeTimeZone).format("h:mm A z");
+    .format("dddd, MMMM D, YYYY h:mm A")} (${entry.attendeeTimeZone})`;
+  const formattedEnd = `${dayjs(entry.endTime)
+    .tz(entry.attendeeTimeZone)
+    .format("h:mm A")} (${entry.attendeeTimeZone})`;
   const formattedExpiry = entry.offerExpiresAt
-    ? dayjs(entry.offerExpiresAt).tz(entry.attendeeTimeZone).format("dddd, MMMM D, YYYY h:mm A z")
+    ? `${dayjs(entry.offerExpiresAt)
+        .tz(entry.attendeeTimeZone)
+        .format("dddd, MMMM D, YYYY h:mm A")} (${entry.attendeeTimeZone})`
     : null;
 
   if (claimMutation.isError) {
     return (
       <main className="mx-auto flex min-h-screen max-w-xl items-center px-4 py-12">
         <Alert severity="warning" title={errorTitle} message={errorMessage} />
+      </main>
+    );
+  }
+
+  if (claimMutation.isSuccess && claimMutation.data.booking.uid === null) {
+    return (
+      <main className="mx-auto flex min-h-screen max-w-xl items-center px-4 py-12">
+        <Alert
+          severity="info"
+          title={t("waitlist_booking_created_title")}
+          message={t("waitlist_booking_created_description", {
+            id: claimMutation.data.booking.id ?? t("not_available"),
+          })}
+        />
       </main>
     );
   }
