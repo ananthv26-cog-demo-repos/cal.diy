@@ -5,6 +5,7 @@ import { trpc } from "@calcom/trpc/react";
 import { Button } from "@calcom/ui/components/button";
 import { SettingsToggle, TextField } from "@calcom/ui/components/form";
 import { useFlags } from "@calcom/web/modules/feature-flags/hooks/useFlags";
+import { useEffect, useRef, useState } from "react";
 import { Controller, useFormContext } from "react-hook-form";
 
 type WaitlistSettingsProps = {
@@ -17,9 +18,22 @@ export const WaitlistSettings = ({ eventTypeId, showToast }: WaitlistSettingsPro
   const flags = useFlags();
   const formMethods = useFormContext<FormValues>();
   const waitlistEnabled = formMethods.watch("waitlistEnabled");
+  const seatsPerTimeSlot = formMethods.watch("seatsPerTimeSlot");
+  const recurringEvent = formMethods.watch("recurringEvent");
+  const waitlistUnavailable = Boolean(seatsPerTimeSlot || recurringEvent);
+  const waitlistMaxSize = formMethods.watch("waitlistMaxSize");
+  const [maxSizeInput, setMaxSizeInput] = useState(() =>
+    waitlistMaxSize === null || waitlistMaxSize === undefined ? "" : String(waitlistMaxSize)
+  );
+  const lastFormMaxSize = useRef(waitlistMaxSize);
+  useEffect(() => {
+    if (waitlistMaxSize === lastFormMaxSize.current) return;
+    lastFormMaxSize.current = waitlistMaxSize;
+    setMaxSizeInput(waitlistMaxSize === null || waitlistMaxSize === undefined ? "" : String(waitlistMaxSize));
+  }, [waitlistMaxSize]);
   const entriesQuery = trpc.viewer.waitlist.listForEventType.useQuery(
     { eventTypeId },
-    { enabled: Boolean(flags["slot-waitlist"] && waitlistEnabled) }
+    { enabled: Boolean(flags["slot-waitlist"] && waitlistEnabled && !waitlistUnavailable) }
   );
   const utils = trpc.useUtils();
   const removeMutation = trpc.viewer.waitlist.remove.useMutation({
@@ -40,6 +54,12 @@ export const WaitlistSettings = ({ eventTypeId, showToast }: WaitlistSettingsPro
     EXPIRED: t("waitlist_status_expired"),
     CANCELLED: t("waitlist_status_cancelled"),
   };
+  const activeEntries = entriesQuery.data?.filter(
+    (entry) => entry.status === "PENDING" || entry.status === "OFFERED" || entry.status === "CLAIMED"
+  );
+  const waitlistDescription = waitlistUnavailable
+    ? `${t("waitlist_settings_description")} ${t("waitlist_unavailable_for_event_type")}`
+    : t("waitlist_settings_description");
 
   return (
     <>
@@ -51,23 +71,25 @@ export const WaitlistSettings = ({ eventTypeId, showToast }: WaitlistSettingsPro
             toggleSwitchAtTheEnd
             switchContainerClassName="rounded-lg border border-subtle px-4 py-6 sm:px-6"
             title={t("waitlist_settings_title")}
-            description={t("waitlist_settings_description")}
+            description={waitlistDescription}
             checked={value}
+            disabled={waitlistUnavailable}
             onCheckedChange={(enabled) => onChange(enabled)}>
-            {waitlistEnabled && (
+            {waitlistEnabled && !waitlistUnavailable && (
               <div className="rounded-b-lg border border-subtle border-t-0 p-6">
                 <Controller
                   name="waitlistMaxSize"
-                  render={({ field: { value: maxSize, onChange: setMaxSize } }) => (
+                  render={({ field: { onChange: setMaxSize } }) => (
                     <TextField
                       type="number"
                       min={1}
                       step={1}
                       label={t("waitlist_max_size_label")}
                       hint={t("waitlist_max_size_description")}
-                      value={maxSize ?? ""}
+                      value={maxSizeInput}
                       onChange={(event) => {
                         const nextValue = event.target.value;
+                        setMaxSizeInput(nextValue);
                         if (!nextValue) {
                           setMaxSize(null);
                           return;
@@ -85,14 +107,16 @@ export const WaitlistSettings = ({ eventTypeId, showToast }: WaitlistSettingsPro
           </SettingsToggle>
         )}
       />
-      {waitlistEnabled && (
+      {waitlistEnabled && !waitlistUnavailable && (
         <section className="mt-6 rounded-lg border border-subtle p-6">
           <h3 className="font-medium text-emphasis">{t("waitlist_list_title")}</h3>
           {entriesQuery.isPending ? (
             <p className="mt-3 text-sm text-subtle">{t("loading")}</p>
-          ) : entriesQuery.data?.length ? (
+          ) : entriesQuery.error ? (
+            <p className="mt-3 text-sm text-red-500">{t("waitlist_list_error")}</p>
+          ) : activeEntries?.length ? (
             <div className="mt-4 space-y-3">
-              {entriesQuery.data.map((entry) => (
+              {activeEntries.map((entry) => (
                 <div
                   className="flex flex-col gap-3 rounded-lg border border-subtle p-4 sm:flex-row sm:items-center sm:justify-between"
                   key={entry.uid}>
@@ -105,13 +129,15 @@ export const WaitlistSettings = ({ eventTypeId, showToast }: WaitlistSettingsPro
                       {statusLabels[entry.status]}
                     </p>
                   </div>
-                  <Button
-                    color="secondary"
-                    size="sm"
-                    loading={removeMutation.isPending && removeMutation.variables?.uid === entry.uid}
-                    onClick={() => removeMutation.mutate({ eventTypeId, uid: entry.uid })}>
-                    {t("waitlist_remove_button")}
-                  </Button>
+                  {entry.status !== "CLAIMED" && (
+                    <Button
+                      color="secondary"
+                      size="sm"
+                      loading={removeMutation.isPending && removeMutation.variables?.uid === entry.uid}
+                      onClick={() => removeMutation.mutate({ eventTypeId, uid: entry.uid })}>
+                      {t("waitlist_remove_button")}
+                    </Button>
+                  )}
                 </div>
               ))}
             </div>
