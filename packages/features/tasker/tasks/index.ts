@@ -22,6 +22,7 @@ const tasks: Record<TaskTypes, () => Promise<TaskHandler>> = {
     import("./sendAwaitingPaymentEmail").then((module) => module.sendAwaitingPaymentEmail),
   bookingAudit: () => import("./bookingAudit").then((module) => module.bookingAudit),
   webhookDelivery: () => import("./webhookDelivery").then((module) => module.webhookDelivery),
+  expireWaitlistOffer: () => import("./expireWaitlistOffer").then((module) => module.expireWaitlistOffer),
 };
 
 export const tasksConfig = {
