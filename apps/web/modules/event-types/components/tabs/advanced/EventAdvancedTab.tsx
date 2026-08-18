@@ -1169,7 +1169,7 @@ export const EventAdvancedTab = ({
           </>
         )}
       />
-      <WaitlistSettings eventTypeId={eventType.id} />
+      <WaitlistSettings eventTypeId={eventType.id} showToast={showToast} />
       <Controller
         name="hideOrganizerEmail"
         render={({ field: { value, onChange } }) => (

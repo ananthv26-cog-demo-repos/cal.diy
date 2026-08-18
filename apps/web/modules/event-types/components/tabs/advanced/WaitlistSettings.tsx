@@ -9,9 +9,10 @@ import { Controller, useFormContext } from "react-hook-form";
 
 type WaitlistSettingsProps = {
   eventTypeId: number;
+  showToast: (message: string, variant: "success" | "warning" | "error") => void;
 };
 
-export const WaitlistSettings = ({ eventTypeId }: WaitlistSettingsProps) => {
+export const WaitlistSettings = ({ eventTypeId, showToast }: WaitlistSettingsProps) => {
   const { t } = useLocale();
   const flags = useFlags();
   const formMethods = useFormContext<FormValues>();
@@ -24,6 +25,9 @@ export const WaitlistSettings = ({ eventTypeId }: WaitlistSettingsProps) => {
   const removeMutation = trpc.viewer.waitlist.remove.useMutation({
     onSuccess: async () => {
       await utils.viewer.waitlist.listForEventType.invalidate({ eventTypeId });
+    },
+    onError: () => {
+      showToast(t("waitlist_remove_error"), "error");
     },
   });
 
@@ -58,12 +62,20 @@ export const WaitlistSettings = ({ eventTypeId }: WaitlistSettingsProps) => {
                     <TextField
                       type="number"
                       min={1}
+                      step={1}
                       label={t("waitlist_max_size_label")}
                       hint={t("waitlist_max_size_description")}
                       value={maxSize ?? ""}
                       onChange={(event) => {
                         const nextValue = event.target.value;
-                        setMaxSize(nextValue ? Number(nextValue) : null);
+                        if (!nextValue) {
+                          setMaxSize(null);
+                          return;
+                        }
+                        const parsedValue = Number(nextValue);
+                        if (Number.isInteger(parsedValue) && parsedValue >= 1) {
+                          setMaxSize(parsedValue);
+                        }
                       }}
                     />
                   )}
@@ -88,7 +100,9 @@ export const WaitlistSettings = ({ eventTypeId }: WaitlistSettingsProps) => {
                     <p className="font-medium text-emphasis">{entry.attendeeName}</p>
                     <p className="text-subtle">{entry.attendeeEmail}</p>
                     <p className="text-subtle">
-                      {dayjs(entry.startTime).tz(entry.attendeeTimeZone).format("MMM D, YYYY h:mm A z")} ·{" "}
+                      {dayjs(entry.startTime).tz(entry.attendeeTimeZone).format("MMM D, YYYY h:mm A")} (
+                      {entry.attendeeTimeZone}) ·{" "}
+                      {t("waitlist_attendee_timezone", { timezone: entry.attendeeTimeZone })} ·{" "}
                       {statusLabels[entry.status]}
                     </p>
                   </div>

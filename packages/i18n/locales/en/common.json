@@ -4818,6 +4818,8 @@
   "waitlist_settings_description": "Let attendees join a queue when a requested time is unavailable.",
   "waitlist_max_size_label": "Maximum waitlist size",
   "waitlist_max_size_description": "Leave empty to use the default limit of 20 entries.",
+  "waitlist_attendee_timezone": "Attendee timezone: {{timezone}}",
+  "waitlist_remove_error": "We couldn't remove this waitlist entry. Please try again.",
   "waitlist_list_title": "Waitlist entries",
   "waitlist_list_empty": "There are no waitlist entries for this event.",
   "waitlist_remove_button": "Remove",
