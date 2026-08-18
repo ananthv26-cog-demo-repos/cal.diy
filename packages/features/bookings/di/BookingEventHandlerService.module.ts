@@ -1,7 +1,10 @@
 import { BookingEventHandlerService } from "@calcom/features/bookings/lib/onBookingEvents/BookingEventHandlerService";
 import { bindModuleToClassOnToken, createModule } from "@calcom/features/di/di";
+import { moduleLoader as eventTypeRepositoryModuleLoader } from "@calcom/features/di/modules/EventType";
 import { moduleLoader as loggerModuleLoader } from "@calcom/features/di/shared/services/logger.service";
+import { moduleLoader as taskerModuleLoader } from "@calcom/features/di/shared/services/tasker.service";
 import { DI_TOKENS } from "@calcom/features/di/tokens";
+import { moduleLoader as featureRepositoryModuleLoader } from "@calcom/features/flags/di/CachedFeatureRepository.module";
 import { moduleLoader as hashedLinkServiceModuleLoader } from "@calcom/features/hashedLink/di/HashedLinkService.module";
 
 const thisModule = createModule();
@@ -16,6 +19,9 @@ const loadModule = bindModuleToClassOnToken({
   depsMap: {
     hashedLinkService: hashedLinkServiceModuleLoader,
     log: loggerModuleLoader,
+    featureRepository: featureRepositoryModuleLoader,
+    eventTypeRepository: eventTypeRepositoryModuleLoader,
+    tasker: taskerModuleLoader,
   },
 });
 

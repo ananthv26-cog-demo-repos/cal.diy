@@ -388,6 +388,7 @@ function buildBookingCreatedPayload({
   booking: {
     id: number;
     uid: string;
+    eventTypeId: number | null;
     startTime: Date;
     endTime: Date;
     status: BookingStatus;
@@ -408,6 +409,7 @@ function buildBookingCreatedPayload({
     booking: {
       id: booking.id,
       uid: booking.uid,
+      eventTypeId: booking.eventTypeId,
       startTime: booking.startTime,
       endTime: booking.endTime,
       status: booking.status,
@@ -2599,6 +2601,7 @@ export class RegularBookingService implements IBookingService {
     booking: {
       id: number;
       uid: string;
+      eventTypeId: number | null;
       startTime: Date;
       endTime: Date;
       status: BookingStatus;

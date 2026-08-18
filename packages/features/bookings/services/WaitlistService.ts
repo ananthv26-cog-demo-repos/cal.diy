@@ -1,4 +1,10 @@
 import { randomBytes } from "node:crypto";
+import {
+  sendWaitlistCancelledEmail,
+  sendWaitlistJoinedEmail,
+  sendWaitlistOfferEmail,
+  sendWaitlistOfferExpiredEmail,
+} from "@calcom/emails/email-manager";
 import type { RegularBookingService } from "@calcom/features/bookings/lib/service/RegularBookingService";
 import type {
   IWaitlistEntryRepository,
@@ -11,6 +17,8 @@ import type { ISelectedSlotRepository } from "@calcom/features/selectedSlots/rep
 import type { Tasker } from "@calcom/features/tasker/tasker";
 import { ErrorCode } from "@calcom/lib/errorCodes";
 import { ErrorWithCode } from "@calcom/lib/errors";
+import logger from "@calcom/lib/logger";
+import { safeStringify } from "@calcom/lib/safeStringify";
 import { CreationSource } from "@calcom/prisma/enums";
 import type { AvailableSlotsService } from "@calcom/trpc/server/routers/viewer/slots/util";
 import { uuid } from "short-uuid";
@@ -18,6 +26,7 @@ import { uuid } from "short-uuid";
 const FEATURE_FLAG = "slot-waitlist";
 const DEFAULT_OFFER_TTL_MINUTES = 30;
 const DEFAULT_WAITLIST_MAX_SIZE = 20;
+const WAITLIST_SWEEP_BATCH_SIZE = 100;
 const BOOKING_RESPONSE_RESERVED_KEYS: readonly string[] = ["eventTypeId", "start", "end"];
 const SLOT_UNAVAILABLE_ERROR_CODES: Set<string> = new Set([
   ErrorCode.BookingConflict,
@@ -26,6 +35,7 @@ const SLOT_UNAVAILABLE_ERROR_CODES: Set<string> = new Set([
 
 type WaitlistEventType = {
   id: number;
+  title: string;
   teamId: number | null;
   schedulingType: string | null;
   seatsPerTimeSlot: number | null;
@@ -85,10 +95,19 @@ function isSlotUnavailableError(error: unknown): boolean {
 export class WaitlistService {
   private readonly now: () => Date;
   private readonly offerTtlMinutes: number;
+  private readonly log = logger.getSubLogger({ prefix: ["WaitlistService"] });
 
   constructor(private readonly deps: WaitlistServiceDependencies) {
     this.now = deps.now ?? (() => new Date());
     this.offerTtlMinutes = deps.offerTtlMinutes ?? DEFAULT_OFFER_TTL_MINUTES;
+  }
+
+  private async sendBestEffortNotification(name: string, send: () => Promise<unknown>): Promise<void> {
+    try {
+      await send();
+    } catch (error) {
+      this.log.error(`Failed to send waitlist ${name} email`, safeStringify(error));
+    }
   }
 
   private async ensureFeatureEnabled() {
@@ -204,7 +223,19 @@ export class WaitlistService {
     };
 
     try {
-      return await this.deps.waitlistEntryRepository.create(data);
+      const created = await this.deps.waitlistEntryRepository.create(data);
+      await this.sendBestEffortNotification("joined", () =>
+        sendWaitlistJoinedEmail({
+          uid: created.uid,
+          attendeeName: created.attendeeName,
+          attendeeEmail: created.attendeeEmail,
+          attendeeTimeZone: created.attendeeTimeZone,
+          eventTitle: eventType.title,
+          startTime: created.startTime,
+          endTime: created.endTime,
+        })
+      );
+      return created;
     } catch (error) {
       if (!isUniqueConstraintError(error)) {
         throw error;
@@ -316,6 +347,19 @@ export class WaitlistService {
         { entryId: pending.id },
         { scheduledAt: offerExpiresAt, referenceUid: pending.uid }
       );
+      await this.sendBestEffortNotification("offer", () =>
+        sendWaitlistOfferEmail({
+          uid: pending.uid,
+          attendeeName: pending.attendeeName,
+          attendeeEmail: pending.attendeeEmail,
+          attendeeTimeZone: pending.attendeeTimeZone,
+          eventTitle: eventType.title,
+          startTime,
+          endTime: slotEndTime,
+          offerExpiresAt,
+          offerToken,
+        })
+      );
       return {
         ...pending,
         status: "OFFERED",
@@ -424,6 +468,71 @@ export class WaitlistService {
         endTime: entry.endTime,
       });
     }
+    const eventType = await this.getEventType(entry.eventTypeId);
+    await this.sendBestEffortNotification("offer expired", () =>
+      sendWaitlistOfferExpiredEmail({
+        uid: entry.uid,
+        attendeeName: entry.attendeeName,
+        attendeeEmail: entry.attendeeEmail,
+        attendeeTimeZone: entry.attendeeTimeZone,
+        eventTitle: eventType.title,
+        startTime: entry.startTime,
+        endTime: entry.endTime,
+      })
+    );
+  }
+
+  async sweep() {
+    if (!(await this.deps.featureRepository.checkIfFeatureIsEnabledGlobally(FEATURE_FLAG))) {
+      return;
+    }
+    const now = this.now();
+    await this.deps.waitlistEntryRepository.expireStaleOffers({ now });
+    const pastEntries = await this.deps.waitlistEntryRepository.listActiveBefore({
+      now,
+      limit: WAITLIST_SWEEP_BATCH_SIZE,
+    });
+    const eventTypes = new Map<number, Promise<WaitlistEventType>>();
+    const getSweepEventType = (eventTypeId: number) => {
+      let eventType = eventTypes.get(eventTypeId);
+      if (!eventType) {
+        eventType = this.getEventType(eventTypeId);
+        eventTypes.set(eventTypeId, eventType);
+      }
+      return eventType;
+    };
+    await Promise.all(
+      pastEntries.map(async (entry) => {
+        const transition = await this.deps.waitlistEntryRepository.transitionStatus({
+          id: entry.id,
+          expectedStatus: entry.status,
+          data: { status: "CANCELLED", offerToken: null },
+        });
+        if (transition.count === 0) return;
+        if (entry.status === "OFFERED") {
+          await this.deps.selectedSlotRepository.releaseForWaitlist({
+            eventTypeId: entry.eventTypeId,
+            slot: {
+              utcStartIso: entry.startTime.toISOString(),
+              utcEndIso: entry.endTime.toISOString(),
+            },
+            uid: entry.uid,
+          });
+        }
+        const eventType = await getSweepEventType(entry.eventTypeId);
+        await this.sendBestEffortNotification("cancelled", () =>
+          sendWaitlistCancelledEmail({
+            uid: entry.uid,
+            attendeeName: entry.attendeeName,
+            attendeeEmail: entry.attendeeEmail,
+            attendeeTimeZone: entry.attendeeTimeZone,
+            eventTitle: eventType.title,
+            startTime: entry.startTime,
+            endTime: entry.endTime,
+          })
+        );
+      })
+    );
   }
 
   async leave({ uid, token }: { uid?: string; token?: string }) {

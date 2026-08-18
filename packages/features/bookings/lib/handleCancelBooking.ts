@@ -4,6 +4,7 @@ import { eventTypeMetaDataSchemaWithTypedApps } from "@calcom/app-store/zod-util
 import dayjs from "@calcom/dayjs";
 import { sendCancelledEmailsAndSMS } from "@calcom/emails/email-manager";
 import { BookingReferenceRepository } from "@calcom/features/bookingReference/repositories/BookingReferenceRepository";
+import { getBookingEventHandlerService } from "@calcom/features/bookings/di/BookingEventHandlerService.container";
 import EventManager from "@calcom/features/bookings/lib/EventManager";
 import { getCalEventResponses } from "@calcom/features/bookings/lib/getCalEventResponses";
 import { processNoShowFeeOnCancellation } from "@calcom/features/bookings/lib/payment/processNoShowFeeOnCancellation";
@@ -500,6 +501,23 @@ async function handler(input: CancelBookingInput, dependencies?: Dependencies) {
       );
   } catch (error) {
     log.error("Error deleting event", error);
+  }
+  if (bookingToDelete.eventTypeId) {
+    void getBookingEventHandlerService()
+      .onBookingCancelled({
+        payload: {
+          config: { isDryRun: false },
+          booking: {
+            uid: bookingToDelete.uid,
+            eventTypeId: bookingToDelete.eventTypeId,
+            startTime: bookingToDelete.startTime,
+            endTime: bookingToDelete.endTime,
+          },
+        },
+      })
+      .catch((error) => {
+        log.error("Failed to dispatch waitlist offer after cancellation", safeStringify(error));
+      });
   }
   return {
     success: true,

@@ -1,11 +1,17 @@
 import type { ISimpleLogger } from "@calcom/features/di/shared/services/logger.service";
+import type { EventTypeRepository } from "@calcom/features/eventtypes/repositories/eventTypeRepository";
+import type { IFeatureRepository } from "@calcom/features/flags/repositories/PrismaFeatureRepository";
 import type { HashedLinkService } from "@calcom/features/hashedLink/lib/service/HashedLinkService";
+import type { Tasker } from "@calcom/features/tasker/tasker";
 import { safeStringify } from "@calcom/lib/safeStringify";
-import type { BookingCreatedPayload, BookingRescheduledPayload } from "./types";
+import type { BookingCreatedPayload, BookingRescheduledPayload, BookingSlotFreedPayload } from "./types";
 
 interface BookingEventHandlerDeps {
   log: ISimpleLogger;
   hashedLinkService: HashedLinkService;
+  featureRepository: Pick<IFeatureRepository, "checkIfFeatureIsEnabledGlobally">;
+  eventTypeRepository: Pick<EventTypeRepository, "findByIdMinimal">;
+  tasker: Tasker;
 }
 
 interface OnBookingCreatedParams {
@@ -38,7 +44,30 @@ export class BookingEventHandlerService {
     if (payload.config.isDryRun) {
       return;
     }
-    await this.onBookingCreatedOrRescheduled(payload);
+    await Promise.all([
+      this.onBookingCreatedOrRescheduled(payload),
+      this.enqueueWaitlistOffer({
+        config: payload.config,
+        booking: {
+          uid: payload.oldBooking.uid,
+          eventTypeId: payload.booking.eventTypeId,
+          startTime: payload.oldBooking.startTime,
+          endTime: payload.oldBooking.endTime,
+        },
+      }),
+    ]);
+  }
+
+  async onBookingCancelled(params: { payload: BookingSlotFreedPayload }) {
+    const { payload } = params;
+    if (payload.config.isDryRun) return;
+    await this.enqueueWaitlistOffer(payload);
+  }
+
+  async onBookingDeclined(params: { payload: BookingSlotFreedPayload }) {
+    const { payload } = params;
+    if (payload.config.isDryRun) return;
+    await this.enqueueWaitlistOffer(payload);
   }
 
   private async onBookingCreatedOrRescheduled(payload: BookingCreatedPayload | BookingRescheduledPayload) {
@@ -62,6 +91,27 @@ export class BookingEventHandlerService {
       }
     } catch (error) {
       this.log.error("Error while updating hashed link", safeStringify(error));
+    }
+  }
+
+  private async enqueueWaitlistOffer(payload: BookingSlotFreedPayload) {
+    try {
+      if (payload.booking.eventTypeId === null) return;
+      if (!(await this.deps.featureRepository.checkIfFeatureIsEnabledGlobally("slot-waitlist"))) {
+        return;
+      }
+      const eventType = await this.deps.eventTypeRepository.findByIdMinimal({
+        id: payload.booking.eventTypeId,
+      });
+      if (!eventType?.waitlistEnabled) return;
+
+      await this.deps.tasker.create("offerNextWaitlistEntry", {
+        eventTypeId: payload.booking.eventTypeId,
+        startTime: payload.booking.startTime.toISOString(),
+        endTime: payload.booking.endTime.toISOString(),
+      });
+    } catch (error) {
+      this.log.error("Failed to dispatch waitlist offer", safeStringify(error));
     }
   }
 }

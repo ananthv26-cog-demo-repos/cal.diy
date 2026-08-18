@@ -8,6 +8,7 @@ export interface BookingCreatedPayload {
   };
   booking: {
     uid: string;
+    eventTypeId: number | null;
     startTime: Date;
     endTime: Date;
     status: BookingStatus;
@@ -21,6 +22,16 @@ export interface BookingCreatedPayload {
 export interface BookingRescheduledPayload extends BookingCreatedPayload {
   oldBooking: {
     uid: string;
+    startTime: Date;
+    endTime: Date;
+  };
+}
+
+export interface BookingSlotFreedPayload {
+  config: BookingFlowConfig;
+  booking: {
+    uid: string;
+    eventTypeId: number | null;
     startTime: Date;
     endTime: Date;
   };

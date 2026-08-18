@@ -2,6 +2,7 @@ import { getUsersCredentialsIncludeServiceAccountKey } from "@calcom/app-store/d
 import type { LocationObject } from "@calcom/app-store/locations";
 import { getLocationValueForDB } from "@calcom/app-store/locations";
 import { sendDeclinedEmailsAndSMS } from "@calcom/emails/email-manager";
+import { getBookingEventHandlerService } from "@calcom/features/bookings/di/BookingEventHandlerService.container";
 import { getAllCredentialsIncludeServiceAccountKey } from "@calcom/features/bookings/lib/getAllCredentialsForUsersOnEvent/getAllCredentials";
 import { WEBAPP_URL } from "@calcom/lib/constants";
 import { getAssignmentReasonCategory } from "@calcom/features/bookings/lib/getAssignmentReasonCategory";
@@ -436,6 +437,22 @@ export const confirmHandler = async ({ ctx, input }: ConfirmOptions) => {
         },
       ];
     }
+
+    void getBookingEventHandlerService()
+      .onBookingDeclined({
+        payload: {
+          config: { isDryRun: false },
+          booking: {
+            uid: booking.uid,
+            eventTypeId: booking.eventTypeId,
+            startTime: booking.startTime,
+            endTime: booking.endTime,
+          },
+        },
+      })
+      .catch((error) => {
+        log.error("Failed to dispatch waitlist offer after decline", safeStringify(error));
+      });
 
     if (emailsEnabled) {
       await sendDeclinedEmailsAndSMS(evt, booking.eventType?.metadata as EventTypeMetadata);

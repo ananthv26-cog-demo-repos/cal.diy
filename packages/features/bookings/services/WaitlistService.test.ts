@@ -1,5 +1,14 @@
 import { ErrorCode } from "@calcom/lib/errorCodes";
 import { describe, expect, it, vi } from "vitest";
+
+vi.mock("@calcom/emails/email-manager", () => ({
+  sendWaitlistCancelledEmail: vi.fn(),
+  sendWaitlistJoinedEmail: vi.fn(),
+  sendWaitlistOfferEmail: vi.fn(),
+  sendWaitlistOfferExpiredEmail: vi.fn(),
+}));
+
+import { sendWaitlistJoinedEmail } from "@calcom/emails/email-manager";
 import type { WaitlistEntryRecord } from "../repositories/IWaitlistEntryRepository";
 import { WaitlistService } from "./WaitlistService";
 
@@ -39,6 +48,7 @@ function setup() {
     listForEventType: vi.fn(),
     transitionStatus: vi.fn(),
     expireStaleOffers: vi.fn(),
+    listActiveBefore: vi.fn().mockResolvedValue([]),
   };
   const selectedSlotRepository = {
     reserveForWaitlist: vi.fn().mockResolvedValue(true),
@@ -57,6 +67,7 @@ function setup() {
       recurringEvent: false,
       waitlistEnabled: true,
       waitlistMaxSize: 20,
+      title: "Test event",
     }),
   };
   const availableSlotsService = {
@@ -169,6 +180,23 @@ describe("WaitlistService", () => {
     expect(waitlistEntryRepository.create).toHaveBeenCalledWith(
       expect.objectContaining({ uid: expect.any(String) })
     );
+  });
+
+  it("keeps a successful join when the confirmation email fails", async () => {
+    const { service, waitlistEntryRepository, availableSlotsService } = setup();
+    const created = entry();
+    waitlistEntryRepository.create.mockResolvedValue(created);
+    availableSlotsService.getAvailableSlots.mockResolvedValue({ slots: {} });
+    vi.mocked(sendWaitlistJoinedEmail).mockRejectedValueOnce(new Error("smtp unavailable"));
+
+    await expect(
+      service.join({
+        eventTypeId: 10,
+        startTime: slotStart,
+        endTime: slotEnd,
+        attendee: { name: "A", email: "a@example.com", timeZone: "UTC" },
+      })
+    ).resolves.toBe(created);
   });
 
   it("offers the oldest pending entry first and schedules expiry", async () => {
@@ -318,5 +346,30 @@ describe("WaitlistService", () => {
 
     await expect(service.claim({ offerToken: "offer-token" })).rejects.toThrow(ErrorCode.BookingConflict);
     expect(waitlistEntryRepository.findNextPendingForSlot).not.toHaveBeenCalled();
+  });
+
+  it("sweeps past entries and stale offers", async () => {
+    const { service, waitlistEntryRepository } = setup();
+    const past = entry({
+      startTime: new Date("2029-12-30T10:00:00.000Z"),
+      endTime: new Date("2029-12-30T11:00:00.000Z"),
+    });
+    waitlistEntryRepository.listActiveBefore.mockResolvedValue([past]);
+    waitlistEntryRepository.transitionStatus.mockResolvedValue({ count: 1 });
+
+    await service.sweep();
+
+    expect(waitlistEntryRepository.expireStaleOffers).toHaveBeenCalledWith({
+      now: new Date("2029-12-31T12:00:00.000Z"),
+    });
+    expect(waitlistEntryRepository.listActiveBefore).toHaveBeenCalledWith({
+      now: new Date("2029-12-31T12:00:00.000Z"),
+      limit: 100,
+    });
+    expect(waitlistEntryRepository.transitionStatus).toHaveBeenCalledWith({
+      id: past.id,
+      expectedStatus: "PENDING",
+      data: { status: "CANCELLED", offerToken: null },
+    });
   });
 });
