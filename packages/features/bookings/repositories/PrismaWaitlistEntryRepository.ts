@@ -50,7 +50,7 @@ function toPrismaStatusUpdate(
   return data;
 }
 
-export class WaitlistEntryRepository implements IWaitlistEntryRepository {
+export class PrismaWaitlistEntryRepository implements IWaitlistEntryRepository {
   constructor(private readonly prismaClient: PrismaClient) {}
 
   async create(data: WaitlistEntryCreateData): Promise<WaitlistEntryRecord> {
