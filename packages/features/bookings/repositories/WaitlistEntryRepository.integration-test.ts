@@ -1,10 +1,10 @@
 import { prisma } from "@calcom/prisma";
 import { afterEach, describe, expect, it } from "vitest";
-import { WaitlistEntryRepository } from "./WaitlistEntryRepository";
+import { PrismaWaitlistEntryRepository } from "./PrismaWaitlistEntryRepository";
 
 describe("WaitlistEntryRepository integration", () => {
   let eventTypeId: number | undefined;
-  const repository = new WaitlistEntryRepository(prisma);
+  const repository = new PrismaWaitlistEntryRepository(prisma);
 
   afterEach(async () => {
     if (eventTypeId) {
@@ -25,7 +25,7 @@ describe("WaitlistEntryRepository integration", () => {
     eventTypeId = eventType.id;
 
     const startTime = new Date("2030-01-01T10:00:00.000Z");
-    const createEntry = (suffix: string): ReturnType<WaitlistEntryRepository["create"]> =>
+    const createEntry = (suffix: string): ReturnType<PrismaWaitlistEntryRepository["create"]> =>
       repository.create({
         uid: `waitlist-entry-${Date.now()}-${suffix}`,
         eventTypeId: eventType.id,

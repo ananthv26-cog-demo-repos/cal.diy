@@ -1,9 +1,9 @@
 import type { PrismaClient } from "@calcom/prisma";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { WaitlistEntryRepository } from "./WaitlistEntryRepository";
+import { PrismaWaitlistEntryRepository } from "./PrismaWaitlistEntryRepository";
 
 describe("WaitlistEntryRepository", () => {
-  let repository: WaitlistEntryRepository;
+  let repository: PrismaWaitlistEntryRepository;
   let mockPrismaClient: {
     waitlistEntry: {
       count: ReturnType<typeof vi.fn>;
@@ -27,7 +27,7 @@ describe("WaitlistEntryRepository", () => {
         updateMany: vi.fn(),
       },
     };
-    repository = new WaitlistEntryRepository(mockPrismaClient as unknown as PrismaClient);
+    repository = new PrismaWaitlistEntryRepository(mockPrismaClient as unknown as PrismaClient);
   });
 
   it("creates entries with a select projection", async () => {
