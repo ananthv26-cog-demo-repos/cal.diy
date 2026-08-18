@@ -7,7 +7,7 @@ import { DI_TOKENS } from "@calcom/features/di/tokens";
 import { EventTypeRepository } from "@calcom/features/eventtypes/repositories/eventTypeRepository";
 import { PrismaSelectedSlotRepository } from "@calcom/features/selectedSlots/repositories/PrismaSelectedSlotRepository";
 import tasker from "@calcom/features/tasker";
-import { WaitlistEntryRepository } from "../repositories/WaitlistEntryRepository";
+import { PrismaWaitlistEntryRepository } from "../repositories/PrismaWaitlistEntryRepository";
 import { WaitlistService } from "../services/WaitlistService";
 import { getRegularBookingService } from "./RegularBookingService.container";
 
@@ -17,7 +17,7 @@ const moduleToken = DI_TOKENS.WAITLIST_SERVICE_MODULE;
 
 thisModule
   .bind(DI_TOKENS.WAITLIST_ENTRY_REPOSITORY)
-  .toClass(WaitlistEntryRepository, [DI_TOKENS.PRISMA_CLIENT]);
+  .toClass(PrismaWaitlistEntryRepository, [DI_TOKENS.PRISMA_CLIENT]);
 thisModule.bind(DI_TOKENS.EVENT_TYPE_REPOSITORY).toClass(EventTypeRepository, [DI_TOKENS.PRISMA_CLIENT]);
 thisModule
   .bind(DI_TOKENS.SELECTED_SLOT_REPOSITORY)
