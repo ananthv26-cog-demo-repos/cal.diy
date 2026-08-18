@@ -75,4 +75,7 @@ export const DI_TOKENS = {
   ...TRANSLATION_DI_TOKENS,
   ...WEBHOOK_TOKENS,
   ...EVENT_TYPE_DI_TOKENS,
+  WAITLIST_ENTRY_REPOSITORY: Symbol("WaitlistEntryRepository"),
+  WAITLIST_SERVICE: Symbol("WaitlistService"),
+  WAITLIST_SERVICE_MODULE: Symbol("WaitlistServiceModule"),
 };
