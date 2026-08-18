@@ -157,6 +157,8 @@ const BaseEventTypeUpdateInput: z.ZodType<TUpdateInputSchema> = z
     minimumRescheduleNotice: z.number().min(0).nullable().optional(),
     seatsShowAttendees: z.boolean().nullable().optional(),
     seatsShowAvailabilityCount: z.boolean().nullable().optional(),
+    waitlistEnabled: z.boolean().optional(),
+    waitlistMaxSize: z.number().int().min(1).nullable().optional(),
     scheduleId: z.number().int().nullable().optional(),
     allowReschedulingCancelledBookings: z.boolean().nullable().optional(),
     price: z.number().int().optional(),

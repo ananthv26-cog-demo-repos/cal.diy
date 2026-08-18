@@ -4814,5 +4814,17 @@
   "waitlist_leave_claimed_description": "This entry already has a booking and cannot be removed.",
   "waitlist_leave_expired_title": "This waitlist offer has expired",
   "waitlist_leave_expired_description": "This offer has expired, so there is no active offer to remove.",
+  "waitlist_settings_title": "Slot waitlist",
+  "waitlist_settings_description": "Let attendees join a queue when a requested time is unavailable.",
+  "waitlist_max_size_label": "Maximum waitlist size",
+  "waitlist_max_size_description": "Leave empty to use the default limit of 20 entries.",
+  "waitlist_list_title": "Waitlist entries",
+  "waitlist_list_empty": "There are no waitlist entries for this event.",
+  "waitlist_remove_button": "Remove",
+  "waitlist_status_pending": "Pending",
+  "waitlist_status_offered": "Offered",
+  "waitlist_status_claimed": "Claimed",
+  "waitlist_status_expired": "Expired",
+  "waitlist_status_cancelled": "Cancelled",
   "ADD_NEW_STRINGS_ABOVE_THIS_LINE_TO_PREVENT_MERGE_CONFLICTS": "↑↑↑↑↑↑↑↑↑↑↑↑↑ Add your new strings above here ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑"
 }
