@@ -4769,5 +4769,17 @@
   "user_updated_successfully": "User updated successfully.",
   "error_updating_user": "There was an error updating this user.",
   "please_reschedule": "Please reschedule.",
+  "waitlist_joined_subject": "Added to the waitlist for {{title}}",
+  "waitlist_joined_body": "You are on the waitlist for {{title}} at {{start}}.",
+  "waitlist_offer_subject": "A spot opened for {{title}}",
+  "waitlist_offer_body": "A spot is available for {{title}} at {{start}}.",
+  "waitlist_offer_expires": "This offer expires at {{expiry}}.",
+  "waitlist_claim_offer": "Claim this spot",
+  "waitlist_leave": "Leave the waitlist",
+  "waitlist_offer_expired_subject": "Your offer expired for {{title}}",
+  "waitlist_offer_expired_body": "Your offer for {{title}} at {{start}} has expired.",
+  "waitlist_still_on_list": "You remain on the waitlist and may receive another offer.",
+  "waitlist_cancelled_subject": "Waitlist cancelled for {{title}}",
+  "waitlist_cancelled_body": "The waitlist entry for {{title}} at {{start}} was cancelled because the slot passed or was removed.",
   "ADD_NEW_STRINGS_ABOVE_THIS_LINE_TO_PREVENT_MERGE_CONFLICTS": "↑↑↑↑↑↑↑↑↑↑↑↑↑ Add your new strings above here ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑"
 }
