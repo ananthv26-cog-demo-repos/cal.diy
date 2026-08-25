@@ -1,6 +1,8 @@
 import { prisma } from "@calcom/prisma";
 import { getPublicEventSelect } from "./getPublicEvent";
 
+const getSlugOrRequestedSlug = (slug: string) => ({ slug });
+
 export async function getTeamEventType(teamSlug: string, meetingSlug: string, orgSlug: string | null) {
   return await prisma.eventType.findFirst({
     where: {
