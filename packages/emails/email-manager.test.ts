@@ -1,10 +1,38 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
-
 import type { EventTypeMetadata } from "@calcom/prisma/zod-utils";
 import type { CalendarEvent, Person } from "@calcom/types/Calendar";
-
-import { shouldSkipAttendeeEmailWithSettings } from "./email-manager";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  fetchOrganizationEmailSettings,
+  sendAddGuestsEmails,
+  sendAddGuestsEmailsAndSMS,
+  sendAttendeeRequestEmailAndSMS,
+  sendAwaitingPaymentEmailAndSMS,
+  sendCancelledEmailsAndSMS,
+  sendCancelledSeatEmailsAndSMS,
+  sendDeclinedEmailsAndSMS,
+  sendLocationChangeEmailsAndSMS,
+  sendOrganizerRequestEmail,
+  sendOrganizerRequestReminderEmail,
+  sendReassignedEmailsAndSMS,
+  sendReassignedScheduledEmailsAndSMS,
+  sendReassignedUpdatedEmailsAndSMS,
+  sendRequestRescheduleEmailAndSMS,
+  sendRescheduledEmailsAndSMS,
+  sendRescheduledSeatEmailAndSMS,
+  sendRoundRobinCancelledEmailsAndSMS,
+  sendRoundRobinRescheduledEmailsAndSMS,
+  sendScheduledEmailsAndSMS,
+  sendScheduledSeatsEmailsAndSMS,
+  shouldSkipAttendeeEmailWithSettings,
+} from "./email-manager";
 import AttendeeScheduledEmail from "./templates/attendee-scheduled-email";
+
+const { recorder } = vi.hoisted(() => ({
+  recorder: {
+    emails: [] as { name: string; instance: Record<string, unknown> }[],
+    sms: [] as { name: string; recipient?: string }[],
+  },
+}));
 
 vi.mock("@calcom/prisma", () => ({
   prisma: {},
@@ -35,6 +63,32 @@ vi.mock("./templates/_base-email", () => {
     default: class MockBaseEmail {
       getMailerOptions() {
         return { from: "test@cal.com" };
+      }
+      sendEmail() {
+        recorder.emails.push({
+          name: this.constructor.name,
+          instance: this as unknown as Record<string, unknown>,
+        });
+        return Promise.resolve();
+      }
+    },
+  };
+});
+
+vi.mock("../sms/sms-manager", () => {
+  return {
+    default: class MockSMSManager {
+      calEvent: CalendarEvent;
+      constructor(calEvent: CalendarEvent) {
+        this.calEvent = calEvent;
+      }
+      sendSMSToAttendees() {
+        recorder.sms.push({ name: this.constructor.name });
+        return Promise.resolve();
+      }
+      sendSMSToAttendee(attendee: Person) {
+        recorder.sms.push({ name: this.constructor.name, recipient: attendee.email });
+        return Promise.resolve();
       }
     },
   };
@@ -317,6 +371,578 @@ describe("AttendeeScheduledEmail - Privacy fix for seated events", () => {
         "attendee1@example.com",
         "attendee2@example.com",
       ]);
+    });
+  });
+});
+
+describe("email-manager orchestration", () => {
+  const buildPerson = (email: string, extra: Partial<Person> = {}): Person =>
+    ({
+      name: email.split("@")[0],
+      email,
+      timeZone: "UTC",
+      language: { translate: ((key: string) => key) as Person["language"]["translate"], locale: "en" },
+      ...extra,
+    }) as Person;
+
+  const buildEvent = (overrides: Partial<CalendarEvent> = {}): CalendarEvent =>
+    ({
+      type: "30min",
+      title: "30min between Organizer and Alice",
+      startTime: "2024-01-01T10:00:00Z",
+      endTime: "2024-01-01T10:30:00Z",
+      length: 30,
+      organizer: buildPerson("organizer@example.com"),
+      attendees: [buildPerson("alice@example.com")],
+      ...overrides,
+    }) as CalendarEvent;
+
+  const teamOf = (...emails: string[]) => ({
+    name: "Team",
+    id: 1,
+    members: emails.map((email) => buildPerson(email)),
+  });
+
+  const disableHost: EventTypeMetadata = { disableStandardEmails: { all: { host: true } } };
+  const disableAttendee: EventTypeMetadata = { disableStandardEmails: { all: { attendee: true } } };
+
+  const emailNames = () => recorder.emails.map((e) => e.name);
+
+  beforeEach(() => {
+    recorder.emails = [];
+    recorder.sms = [];
+  });
+
+  it("fetchOrganizationEmailSettings always resolves to null since org settings were removed", async () => {
+    await expect(fetchOrganizationEmailSettings(1)).resolves.toBeNull();
+    await expect(fetchOrganizationEmailSettings()).resolves.toBeNull();
+  });
+
+  describe("sendScheduledEmailsAndSMS", () => {
+    it("emails the organizer, each team member and every attendee, then texts attendees", async () => {
+      const calEvent = buildEvent({
+        attendees: [buildPerson("alice@example.com"), buildPerson("bob@example.com")],
+        team: teamOf("member@example.com"),
+      });
+
+      await sendScheduledEmailsAndSMS(calEvent);
+
+      expect(emailNames()).toEqual([
+        "OrganizerScheduledEmail",
+        "OrganizerScheduledEmail",
+        "AttendeeScheduledEmail",
+        "AttendeeScheduledEmail",
+      ]);
+      expect(recorder.sms).toEqual([{ name: "EventSuccessfullyScheduledSMS" }]);
+    });
+
+    it("skips host emails when they are disabled by argument or metadata", async () => {
+      await sendScheduledEmailsAndSMS(buildEvent(), undefined, true);
+      expect(emailNames()).toEqual(["AttendeeScheduledEmail"]);
+
+      recorder.emails = [];
+      await sendScheduledEmailsAndSMS(buildEvent(), undefined, false, false, disableHost);
+      expect(emailNames()).toEqual(["AttendeeScheduledEmail"]);
+    });
+
+    it("skips attendee emails when they are disabled by argument or metadata", async () => {
+      await sendScheduledEmailsAndSMS(buildEvent(), undefined, false, true);
+      expect(emailNames()).toEqual(["OrganizerScheduledEmail"]);
+
+      recorder.emails = [];
+      await sendScheduledEmailsAndSMS(buildEvent(), undefined, false, false, disableAttendee);
+      expect(emailNames()).toEqual(["OrganizerScheduledEmail"]);
+    });
+
+    it("renames the attendee email title from the event name object and drops notes when hidden", async () => {
+      const calEvent = buildEvent({ additionalNotes: "secret", hideCalendarNotes: true });
+
+      await sendScheduledEmailsAndSMS(calEvent, {
+        attendeeName: "Alice",
+        eventType: "30min",
+        eventName: "Custom {Event type title}",
+        host: "Organizer",
+        eventDuration: 30,
+        t: ((key: string) => key) as Person["language"]["translate"],
+      });
+
+      const attendeeEmail = recorder.emails.find((e) => e.name === "AttendeeScheduledEmail");
+      const attendeeCalEvent = attendeeEmail?.instance.calEvent as CalendarEvent;
+      expect(attendeeCalEvent.title).toBe("Custom 30min");
+      expect(attendeeCalEvent.additionalNotes).toBeUndefined();
+    });
+  });
+
+  describe("sendReassignedScheduledEmailsAndSMS", () => {
+    it("emails every new member and texts only those with a phone number", async () => {
+      const members = [
+        buildPerson("m1@example.com"),
+        buildPerson("m2@example.com", { phoneNumber: "+15550000000" }),
+      ];
+
+      await sendReassignedScheduledEmailsAndSMS({
+        calEvent: buildEvent(),
+        members,
+        reassigned: { name: "New Host", email: "new@example.com" },
+      });
+
+      expect(emailNames()).toEqual(["OrganizerScheduledEmail", "OrganizerScheduledEmail"]);
+      expect(recorder.sms).toEqual([{ name: "EventSuccessfullyScheduledSMS", recipient: "m2@example.com" }]);
+    });
+
+    it("sends nothing when host emails are disabled", async () => {
+      await sendReassignedScheduledEmailsAndSMS({
+        calEvent: buildEvent(),
+        members: [buildPerson("m1@example.com")],
+        eventTypeMetadata: disableHost,
+      });
+
+      expect(recorder.emails).toHaveLength(0);
+    });
+  });
+
+  describe("sendRoundRobinRescheduledEmailsAndSMS", () => {
+    it("sends attendee emails to attendees and organizer emails to team members", async () => {
+      const attendee = buildPerson("alice@example.com", { phoneNumber: "+15550000001" });
+      const member = buildPerson("member@example.com", { phoneNumber: "+15550000002" });
+      const calEvent = buildEvent({ attendees: [attendee], team: teamOf("member@example.com") });
+
+      await sendRoundRobinRescheduledEmailsAndSMS(calEvent, [attendee, member]);
+
+      expect(emailNames()).toEqual(["AttendeeRescheduledEmail", "OrganizerRescheduledEmail"]);
+      expect(recorder.sms.map((s) => s.recipient)).toEqual(["alice@example.com", "member@example.com"]);
+    });
+
+    it("treats a person who is both attendee and team member as a host", async () => {
+      const both = buildPerson("member@example.com");
+      const calEvent = buildEvent({ attendees: [both], team: teamOf("member@example.com") });
+
+      await sendRoundRobinRescheduledEmailsAndSMS(calEvent, [both]);
+
+      expect(emailNames()).toEqual(["OrganizerRescheduledEmail"]);
+    });
+
+    it("respects the attendee and host disable flags", async () => {
+      const attendee = buildPerson("alice@example.com");
+      const member = buildPerson("member@example.com");
+      const calEvent = buildEvent({ attendees: [attendee], team: teamOf("member@example.com") });
+
+      await sendRoundRobinRescheduledEmailsAndSMS(calEvent, [attendee, member], disableAttendee);
+      expect(emailNames()).toEqual(["OrganizerRescheduledEmail"]);
+
+      recorder.emails = [];
+      await sendRoundRobinRescheduledEmailsAndSMS(calEvent, [attendee, member], disableHost);
+      expect(emailNames()).toEqual(["AttendeeRescheduledEmail"]);
+    });
+  });
+
+  describe("sendReassignedUpdatedEmailsAndSMS", () => {
+    it("emails every attendee with the showAttendees flag", async () => {
+      const calEvent = buildEvent({
+        attendees: [buildPerson("alice@example.com"), buildPerson("bob@example.com")],
+      });
+
+      await sendReassignedUpdatedEmailsAndSMS({ calEvent, showAttendees: false });
+
+      expect(emailNames()).toEqual(["AttendeeUpdatedEmail", "AttendeeUpdatedEmail"]);
+      expect(recorder.emails.map((e) => (e.instance.attendee as Person).email)).toEqual([
+        "alice@example.com",
+        "bob@example.com",
+      ]);
+    });
+
+    it("sends nothing when attendee emails are disabled", async () => {
+      await sendReassignedUpdatedEmailsAndSMS({
+        calEvent: buildEvent(),
+        showAttendees: true,
+        eventTypeMetadata: disableAttendee,
+      });
+
+      expect(recorder.emails).toHaveLength(0);
+    });
+  });
+
+  describe("sendRoundRobinCancelledEmailsAndSMS", () => {
+    it("emails each removed member and texts the ones with a phone number", async () => {
+      const members = [
+        buildPerson("m1@example.com"),
+        buildPerson("m2@example.com", { phoneNumber: "+15550000003" }),
+      ];
+
+      await sendRoundRobinCancelledEmailsAndSMS(buildEvent(), members, undefined, {
+        name: "New Host",
+        email: "new@example.com",
+      });
+
+      expect(emailNames()).toEqual(["OrganizerCancelledEmail", "OrganizerCancelledEmail"]);
+      expect(recorder.emails[0].instance.reassigned).toEqual({ name: "New Host", email: "new@example.com" });
+      expect(recorder.sms).toEqual([{ name: "EventCancelledSMS", recipient: "m2@example.com" }]);
+    });
+
+    it("sends nothing when host emails are disabled", async () => {
+      await sendRoundRobinCancelledEmailsAndSMS(buildEvent(), [buildPerson("m1@example.com")], disableHost);
+
+      expect(recorder.emails).toHaveLength(0);
+    });
+  });
+
+  describe("sendReassignedEmailsAndSMS", () => {
+    it("emails each member with the reassignment target", async () => {
+      await sendReassignedEmailsAndSMS({
+        calEvent: buildEvent(),
+        members: [buildPerson("m1@example.com", { phoneNumber: "+15550000004" })],
+        reassignedTo: { name: "New Host", email: "new@example.com" },
+      });
+
+      expect(emailNames()).toEqual(["OrganizerReassignedEmail"]);
+      expect(recorder.sms).toEqual([{ name: "EventCancelledSMS", recipient: "m1@example.com" }]);
+    });
+
+    it("sends nothing when host emails are disabled", async () => {
+      await sendReassignedEmailsAndSMS({
+        calEvent: buildEvent(),
+        members: [buildPerson("m1@example.com")],
+        reassignedTo: { name: null, email: "new@example.com" },
+        eventTypeMetadata: disableHost,
+      });
+
+      expect(recorder.emails).toHaveLength(0);
+    });
+  });
+
+  describe("sendRescheduledEmailsAndSMS", () => {
+    it("emails the organizer, the team and every attendee, then texts attendees", async () => {
+      const calEvent = buildEvent({ team: teamOf("member@example.com") });
+
+      await sendRescheduledEmailsAndSMS(calEvent);
+
+      expect(emailNames()).toEqual([
+        "OrganizerRescheduledEmail",
+        "OrganizerRescheduledEmail",
+        "AttendeeRescheduledEmail",
+      ]);
+      expect(recorder.sms).toEqual([{ name: "EventSuccessfullyReScheduledSMS" }]);
+    });
+
+    it("respects the host and attendee disable flags", async () => {
+      await sendRescheduledEmailsAndSMS(buildEvent(), disableHost);
+      expect(emailNames()).toEqual(["AttendeeRescheduledEmail"]);
+
+      recorder.emails = [];
+      await sendRescheduledEmailsAndSMS(buildEvent(), disableAttendee);
+      expect(emailNames()).toEqual(["OrganizerRescheduledEmail"]);
+    });
+  });
+
+  describe("sendRescheduledSeatEmailAndSMS", () => {
+    it("emails the organizer and the single seat attendee and texts that attendee", async () => {
+      const attendee = buildPerson("alice@example.com");
+
+      await sendRescheduledSeatEmailAndSMS(buildEvent(), attendee);
+
+      expect(emailNames()).toEqual(["OrganizerRescheduledEmail", "AttendeeRescheduledEmail"]);
+      expect(recorder.sms).toEqual([
+        { name: "EventSuccessfullyReScheduledSMS", recipient: "alice@example.com" },
+      ]);
+    });
+
+    it("respects the host and attendee disable flags", async () => {
+      const attendee = buildPerson("alice@example.com");
+
+      await sendRescheduledSeatEmailAndSMS(buildEvent(), attendee, disableHost);
+      expect(emailNames()).toEqual(["AttendeeRescheduledEmail"]);
+
+      recorder.emails = [];
+      await sendRescheduledSeatEmailAndSMS(buildEvent(), attendee, disableAttendee);
+      expect(emailNames()).toEqual(["OrganizerRescheduledEmail"]);
+    });
+  });
+
+  describe("sendScheduledSeatsEmailsAndSMS", () => {
+    it("emails the organizer, the team and the invitee, then texts the invitee", async () => {
+      const invitee = buildPerson("alice@example.com");
+      const calEvent = buildEvent({ team: teamOf("member@example.com") });
+
+      await sendScheduledSeatsEmailsAndSMS(calEvent, invitee, true, false);
+
+      expect(emailNames()).toEqual([
+        "OrganizerScheduledEmail",
+        "OrganizerScheduledEmail",
+        "AttendeeScheduledEmail",
+      ]);
+      expect(recorder.emails[0].instance.newSeat).toBe(true);
+      expect(recorder.sms).toEqual([
+        { name: "EventSuccessfullyScheduledSMS", recipient: "alice@example.com" },
+      ]);
+    });
+
+    it("honours the host and attendee disable arguments", async () => {
+      const invitee = buildPerson("alice@example.com");
+
+      await sendScheduledSeatsEmailsAndSMS(buildEvent(), invitee, false, true, true);
+      expect(emailNames()).toEqual(["AttendeeScheduledEmail"]);
+
+      recorder.emails = [];
+      await sendScheduledSeatsEmailsAndSMS(buildEvent(), invitee, false, true, false, true);
+      expect(emailNames()).toEqual(["OrganizerScheduledEmail"]);
+    });
+  });
+
+  describe("sendCancelledSeatEmailsAndSMS", () => {
+    it("emails the cancelled attendee and the organizer and texts the attendee", async () => {
+      const attendee = buildPerson("alice@example.com");
+
+      await sendCancelledSeatEmailsAndSMS(buildEvent(), attendee);
+
+      // OrganizerAttendeeCancelledSeatEmail is declared as `class OrganizerCancelledEmail`
+      expect(emailNames()).toEqual(["AttendeeCancelledSeatEmail", "OrganizerCancelledEmail"]);
+      expect(recorder.sms).toEqual([{ name: "CancelledSeatSMS", recipient: "alice@example.com" }]);
+    });
+
+    it("respects the host and attendee disable flags", async () => {
+      const attendee = buildPerson("alice@example.com");
+
+      await sendCancelledSeatEmailsAndSMS(buildEvent(), attendee, disableHost);
+      expect(emailNames()).toEqual(["AttendeeCancelledSeatEmail"]);
+
+      recorder.emails = [];
+      await sendCancelledSeatEmailsAndSMS(buildEvent(), attendee, disableAttendee);
+      expect(emailNames()).toEqual(["OrganizerCancelledEmail"]);
+    });
+  });
+
+  describe("sendOrganizerRequestEmail", () => {
+    it("emails the organizer and every team member", async () => {
+      await sendOrganizerRequestEmail(buildEvent({ team: teamOf("m1@example.com", "m2@example.com") }));
+
+      expect(emailNames()).toEqual([
+        "OrganizerRequestEmail",
+        "OrganizerRequestEmail",
+        "OrganizerRequestEmail",
+      ]);
+    });
+
+    it("sends nothing when host emails are disabled", async () => {
+      await sendOrganizerRequestEmail(buildEvent(), disableHost);
+
+      expect(recorder.emails).toHaveLength(0);
+    });
+  });
+
+  describe("sendAttendeeRequestEmailAndSMS", () => {
+    it("emails and texts the attendee", async () => {
+      const attendee = buildPerson("alice@example.com");
+
+      await sendAttendeeRequestEmailAndSMS(buildEvent(), attendee);
+
+      expect(emailNames()).toEqual(["AttendeeRequestEmail"]);
+      expect(recorder.sms).toEqual([{ name: "EventRequestSMS", recipient: "alice@example.com" }]);
+    });
+
+    it("sends nothing when attendee emails are disabled", async () => {
+      await sendAttendeeRequestEmailAndSMS(buildEvent(), buildPerson("alice@example.com"), disableAttendee);
+
+      expect(recorder.emails).toHaveLength(0);
+      expect(recorder.sms).toHaveLength(0);
+    });
+  });
+
+  describe("sendDeclinedEmailsAndSMS", () => {
+    it("emails every attendee and texts them", async () => {
+      const calEvent = buildEvent({
+        attendees: [buildPerson("alice@example.com"), buildPerson("bob@example.com")],
+      });
+
+      await sendDeclinedEmailsAndSMS(calEvent);
+
+      expect(emailNames()).toEqual(["AttendeeDeclinedEmail", "AttendeeDeclinedEmail"]);
+      expect(recorder.sms).toEqual([{ name: "EventDeclinedSMS" }]);
+    });
+
+    it("sends nothing when attendee emails are disabled", async () => {
+      await sendDeclinedEmailsAndSMS(buildEvent(), disableAttendee);
+
+      expect(recorder.emails).toHaveLength(0);
+      expect(recorder.sms).toHaveLength(0);
+    });
+  });
+
+  describe("sendCancelledEmailsAndSMS", () => {
+    it("emails the organizer, the team and every attendee with a rebuilt title", async () => {
+      const calEvent = buildEvent({ team: teamOf("member@example.com") });
+
+      await sendCancelledEmailsAndSMS(calEvent, { eventName: "Cancelled {Event type title}" });
+
+      expect(emailNames()).toEqual([
+        "OrganizerCancelledEmail",
+        "OrganizerCancelledEmail",
+        "AttendeeCancelledEmail",
+      ]);
+      const attendeeEmail = recorder.emails[2].instance.calEvent as CalendarEvent;
+      expect(attendeeEmail.title).toBe("Cancelled 30min between Organizer and Alice");
+      expect(recorder.sms).toEqual([{ name: "EventCancelledSMS" }]);
+    });
+
+    it("logs when the event length is not a number but still sends", async () => {
+      const calEvent = buildEvent({ length: undefined });
+
+      await sendCancelledEmailsAndSMS(calEvent, { eventName: "" });
+
+      expect(emailNames()).toEqual(["OrganizerCancelledEmail", "AttendeeCancelledEmail"]);
+    });
+
+    it("respects the host and attendee disable flags", async () => {
+      await sendCancelledEmailsAndSMS(buildEvent(), { eventName: "" }, disableHost);
+      expect(emailNames()).toEqual(["AttendeeCancelledEmail"]);
+
+      recorder.emails = [];
+      await sendCancelledEmailsAndSMS(buildEvent(), { eventName: "" }, disableAttendee);
+      expect(emailNames()).toEqual(["OrganizerCancelledEmail"]);
+    });
+  });
+
+  describe("sendOrganizerRequestReminderEmail", () => {
+    it("emails the organizer and every team member", async () => {
+      await sendOrganizerRequestReminderEmail(buildEvent({ team: teamOf("member@example.com") }));
+
+      expect(emailNames()).toEqual(["OrganizerRequestReminderEmail", "OrganizerRequestReminderEmail"]);
+    });
+
+    it("sends nothing when host emails are disabled", async () => {
+      await sendOrganizerRequestReminderEmail(buildEvent(), disableHost);
+
+      expect(recorder.emails).toHaveLength(0);
+    });
+  });
+
+  describe("sendAwaitingPaymentEmailAndSMS", () => {
+    it("emails every attendee and texts them", async () => {
+      const calEvent = buildEvent({
+        attendees: [buildPerson("alice@example.com"), buildPerson("bob@example.com")],
+      });
+
+      await sendAwaitingPaymentEmailAndSMS(calEvent);
+
+      expect(emailNames()).toEqual(["AttendeeAwaitingPaymentEmail", "AttendeeAwaitingPaymentEmail"]);
+      expect(recorder.sms).toEqual([{ name: "AwaitingPaymentSMS" }]);
+    });
+
+    it("still texts attendees when their emails are disabled", async () => {
+      await sendAwaitingPaymentEmailAndSMS(buildEvent(), disableAttendee);
+
+      expect(recorder.emails).toHaveLength(0);
+      expect(recorder.sms).toEqual([{ name: "AwaitingPaymentSMS" }]);
+    });
+  });
+
+  describe("sendRequestRescheduleEmailAndSMS", () => {
+    it("emails the organizer and the attendee with the reschedule link", async () => {
+      await sendRequestRescheduleEmailAndSMS(buildEvent(), { rescheduleLink: "https://cal.dev/resched" });
+
+      expect(emailNames()).toEqual([
+        "OrganizerRequestedToRescheduleEmail",
+        "AttendeeWasRequestedToRescheduleEmail",
+      ]);
+      expect(recorder.emails[0].instance.metadata).toEqual({ rescheduleLink: "https://cal.dev/resched" });
+      expect(recorder.sms).toEqual([{ name: "EventRequestToRescheduleSMS" }]);
+    });
+
+    it("respects the host and attendee disable flags", async () => {
+      const metadata = { rescheduleLink: "https://cal.dev/resched" };
+
+      await sendRequestRescheduleEmailAndSMS(buildEvent(), metadata, disableHost);
+      expect(emailNames()).toEqual(["AttendeeWasRequestedToRescheduleEmail"]);
+
+      recorder.emails = [];
+      await sendRequestRescheduleEmailAndSMS(buildEvent(), metadata, disableAttendee);
+      expect(emailNames()).toEqual(["OrganizerRequestedToRescheduleEmail"]);
+    });
+  });
+
+  describe("sendLocationChangeEmailsAndSMS", () => {
+    it("emails the organizer, the team and every attendee then texts attendees", async () => {
+      const calEvent = buildEvent({ team: teamOf("member@example.com") });
+
+      await sendLocationChangeEmailsAndSMS(calEvent);
+
+      expect(emailNames()).toEqual([
+        "OrganizerLocationChangeEmail",
+        "OrganizerLocationChangeEmail",
+        "AttendeeLocationChangeEmail",
+      ]);
+      expect(recorder.sms).toEqual([{ name: "EventLocationChangedSMS" }]);
+    });
+
+    it("respects the host and attendee disable flags", async () => {
+      await sendLocationChangeEmailsAndSMS(buildEvent(), disableHost);
+      expect(emailNames()).toEqual(["AttendeeLocationChangeEmail"]);
+
+      recorder.emails = [];
+      await sendLocationChangeEmailsAndSMS(buildEvent(), disableAttendee);
+      expect(emailNames()).toEqual(["OrganizerLocationChangeEmail"]);
+    });
+  });
+
+  describe("sendAddGuestsEmails", () => {
+    it("sends a confirmation to new guests and an add-guests email to existing attendees", async () => {
+      const calEvent = buildEvent({
+        attendees: [buildPerson("alice@example.com"), buildPerson("newguest@example.com")],
+        team: teamOf("member@example.com"),
+      });
+
+      await sendAddGuestsEmails(calEvent, ["newguest@example.com"]);
+
+      expect(emailNames()).toEqual([
+        "OrganizerAddGuestsEmail",
+        "OrganizerAddGuestsEmail",
+        "AttendeeAddGuestsEmail",
+        "AttendeeScheduledEmail",
+      ]);
+    });
+  });
+
+  describe("sendAddGuestsEmailsAndSMS", () => {
+    it("texts new guests that have a phone number and emails existing attendees", async () => {
+      const calEvent = buildEvent({
+        attendees: [
+          buildPerson("alice@example.com"),
+          buildPerson("newguest@example.com", { phoneNumber: "+15550000005" }),
+        ],
+        team: teamOf("member@example.com"),
+      });
+
+      await sendAddGuestsEmailsAndSMS({ calEvent, newGuests: ["newguest@example.com"] });
+
+      expect(emailNames()).toEqual([
+        "OrganizerAddGuestsEmail",
+        "OrganizerAddGuestsEmail",
+        "AttendeeAddGuestsEmail",
+        "AttendeeScheduledEmail",
+      ]);
+      expect(recorder.sms).toEqual([
+        { name: "EventSuccessfullyScheduledSMS", recipient: "newguest@example.com" },
+      ]);
+    });
+
+    it("skips host emails when disabled and attendee emails when disabled", async () => {
+      const calEvent = buildEvent({
+        attendees: [buildPerson("alice@example.com"), buildPerson("newguest@example.com")],
+      });
+
+      await sendAddGuestsEmailsAndSMS({
+        calEvent,
+        newGuests: ["newguest@example.com"],
+        eventTypeMetadata: disableHost,
+      });
+      expect(emailNames()).toEqual(["AttendeeAddGuestsEmail", "AttendeeScheduledEmail"]);
+
+      recorder.emails = [];
+      await sendAddGuestsEmailsAndSMS({
+        calEvent,
+        newGuests: ["newguest@example.com"],
+        eventTypeMetadata: disableAttendee,
+      });
+      expect(emailNames()).toEqual(["OrganizerAddGuestsEmail"]);
     });
   });
 });

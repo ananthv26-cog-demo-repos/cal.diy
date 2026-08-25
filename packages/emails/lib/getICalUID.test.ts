@@ -1,9 +1,7 @@
-import { describe, expect } from "vitest";
-
 import { APP_NAME } from "@calcom/lib/constants";
 import { buildCalendarEvent } from "@calcom/lib/test/builder";
 import { test } from "@calcom/testing/lib/fixtures/fixtures";
-
+import { describe, expect } from "vitest";
 import getICalUID from "./getICalUID";
 
 describe("getICalUid", () => {
@@ -25,5 +23,30 @@ describe("getICalUid", () => {
     const event = buildCalendarEvent({ iCalUID: "" });
     const iCalUID = getICalUID({ event, uid: "123" });
     expect(iCalUID).toEqual(`123@${APP_NAME}`);
+  });
+});
+
+describe("getICalUid generated ids", () => {
+  test("generates a short uuid when neither event nor uid is provided", () => {
+    const iCalUID = getICalUID({});
+
+    expect(iCalUID.endsWith(`@${APP_NAME}`)).toBe(true);
+    expect(iCalUID.replace(`@${APP_NAME}`, "").length).toBeGreaterThan(0);
+  });
+
+  test("appends the attendeeId to a generated uid", () => {
+    const iCalUID = getICalUID({ attendeeId: 42 });
+
+    expect(iCalUID).toEqual(expect.stringMatching(new RegExp(`42@${APP_NAME}$`)));
+  });
+
+  test("generates a different uid on every call", () => {
+    expect(getICalUID({})).not.toEqual(getICalUID({}));
+  });
+
+  test("ignores defaultToEventUid when the event has no uid", () => {
+    const iCalUID = getICalUID({ event: { iCalUID: "", uid: null }, defaultToEventUid: true, uid: "abc" });
+
+    expect(iCalUID).toEqual(`abc@${APP_NAME}`);
   });
 });

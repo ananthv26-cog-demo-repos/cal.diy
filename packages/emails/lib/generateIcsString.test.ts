@@ -1,13 +1,10 @@
-import { describe, expect, vi } from "vitest";
-
 import { ORGANIZER_EMAIL_EXEMPT_DOMAINS } from "@calcom/lib/constants";
 import { ErrorCode } from "@calcom/lib/errorCodes";
 import { ErrorWithCode } from "@calcom/lib/errors";
-import { buildCalendarEvent, buildPerson } from "@calcom/lib/test/builder";
-import { buildVideoCallData } from "@calcom/lib/test/builder";
-import type { CalendarEvent } from "@calcom/types/Calendar";
+import { buildCalendarEvent, buildPerson, buildVideoCallData } from "@calcom/lib/test/builder";
 import { test } from "@calcom/testing/lib/fixtures/fixtures";
-
+import type { CalendarEvent } from "@calcom/types/Calendar";
+import { describe, expect, vi } from "vitest";
 import generateIcsString from "./generateIcsString";
 
 const assertHasIcsString = (icsString: string | undefined) => {
@@ -252,6 +249,96 @@ describe("generateIcsString", () => {
 
       expect(icsString).toBeDefined();
       expect(typeof icsString).toBe("string");
+    });
+  });
+
+  describe("recurring events", () => {
+    test("adds an RRULE when the event recurs", () => {
+      const event = buildCalendarEvent({
+        iCalSequence: 0,
+        attendees: [buildPerson()],
+        recurringEvent: { freq: 2, count: 3, interval: 1 },
+      });
+
+      const icsString = assertHasIcsString(generateIcsString({ event, status: "CONFIRMED" }));
+
+      expect(icsString).toEqual(expect.stringContaining("RRULE:FREQ=WEEKLY;COUNT=3"));
+    });
+
+    test("omits the RRULE when the recurring event has no count", () => {
+      const event = buildCalendarEvent({
+        iCalSequence: 0,
+        attendees: [buildPerson()],
+        recurringEvent: { freq: 2, interval: 1, count: 0 },
+      });
+
+      const icsString = assertHasIcsString(generateIcsString({ event, status: "CONFIRMED" }));
+
+      expect(icsString).not.toEqual(expect.stringContaining("RRULE:"));
+    });
+  });
+
+  describe("team members and privacy", () => {
+    test("adds team members as attendees", () => {
+      const teamMember = buildPerson({ name: "Team Member", email: "member@example.com" });
+      const event = buildCalendarEvent({
+        iCalSequence: 0,
+        attendees: [buildPerson()],
+        team: { name: "Team", members: [teamMember], id: 1 },
+      });
+
+      const icsString = assertHasIcsString(generateIcsString({ event, status: "CONFIRMED" }));
+
+      const unfolded = icsString.replace(/\r\n[ \t]/g, "");
+      expect(unfolded).toEqual(expect.stringContaining(`mailto:${teamMember.email}`));
+    });
+
+    test("marks the event as PRIVATE when calendar event details are hidden", () => {
+      const event = buildCalendarEvent({
+        iCalSequence: 0,
+        attendees: [buildPerson()],
+        hideCalendarEventDetails: true,
+      });
+
+      const icsString = assertHasIcsString(generateIcsString({ event, status: "CONFIRMED" }));
+
+      expect(icsString).toEqual(expect.stringContaining("CLASS:PRIVATE"));
+    });
+
+    test("replaces the organizer email when hideOrganizerEmail is set", () => {
+      const event = buildCalendarEvent({
+        iCalSequence: 0,
+        attendees: [buildPerson()],
+        organizer: buildPerson({ name: "Organizer", email: "organizer@example.com" }),
+        hideOrganizerEmail: true,
+      });
+
+      const icsString = assertHasIcsString(generateIcsString({ event, status: "CONFIRMED" }));
+
+      const unfolded = icsString.replace(/\r\n[ \t]/g, "");
+      expect(unfolded).toEqual(expect.stringContaining("mailto:no-reply@cal.com"));
+      expect(unfolded).not.toEqual(
+        expect.stringContaining("ORGANIZER;CN=Organizer:mailto:organizer@example.com")
+      );
+    });
+
+    test("uses the passed partstat for attendees", () => {
+      const attendee = buildPerson({ name: "Attendee", email: "attendee@example.com" });
+      const event = buildCalendarEvent({ iCalSequence: 0, attendees: [attendee] });
+
+      const icsString = assertHasIcsString(
+        generateIcsString({ event, status: "CONFIRMED", partstat: "NEEDS-ACTION" })
+      );
+
+      expect(icsString).toEqual(expect.stringContaining("PARTSTAT=NEEDS-ACTION"));
+    });
+
+    test("falls back to event.uid when there is no iCalUID", () => {
+      const event = buildCalendarEvent({ iCalSequence: 0, iCalUID: "", attendees: [buildPerson()] });
+
+      const icsString = assertHasIcsString(generateIcsString({ event, status: "CONFIRMED" }));
+
+      expect(icsString).toEqual(expect.stringContaining(`UID:${event.uid}`));
     });
   });
 });
